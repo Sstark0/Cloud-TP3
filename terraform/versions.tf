@@ -6,5 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.28"
     }
+
+    andom = {
+      source  = "hashicorp/random"
+      version = "~> 3.9"
+    }
   }
 }

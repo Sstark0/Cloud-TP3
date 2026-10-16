@@ -39,4 +39,3 @@ module "vpc" {
   create_igw         = false
   enable_nat_gateway = false
 }
-

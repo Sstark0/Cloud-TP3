@@ -32,3 +32,8 @@ variable "vpc_cidr" {
     error_message = "vpc_cidr tiene que ser /16 (las subredes /24 se calculan sumando 8 bits)."
   }
 }
+
+variable "db_instance_class" {
+  type    = string
+  default = "db.t3.micro"
+}
