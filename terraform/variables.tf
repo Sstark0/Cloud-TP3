@@ -37,3 +37,8 @@ variable "db_instance_class" {
   type    = string
   default = "db.t3.micro"
 }
+
+variable "endpoint_una_az" {
+  type    = bool
+  default = true
+}

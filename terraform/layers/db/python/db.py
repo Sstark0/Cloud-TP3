@@ -1,0 +1,32 @@
+import json
+import os
+import ssl
+
+import boto3
+import pg8000.native
+
+CA_BUNDLE = "/opt/rds-ca/global-bundle.pem"
+
+_conn = None
+
+
+def _credenciales():
+    sm = boto3.client("secretsmanager")
+    secreto = sm.get_secret_value(SecretId=os.environ["DB_SECRET_ARN"])
+    return json.loads(secreto["SecretString"])
+
+
+def conexion():
+    global _conn
+    if _conn is None:
+        c = _credenciales()
+        _conn = pg8000.native.Connection(
+            user=c["username"],
+            password=c["password"],
+            host=c["host"],
+            port=int(c["port"]),
+            database=c["dbname"],
+            ssl_context=ssl.create_default_context(cafile=CA_BUNDLE),
+        )
+    return _conn
+    

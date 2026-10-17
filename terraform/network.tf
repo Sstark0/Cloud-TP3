@@ -39,3 +39,64 @@ module "vpc" {
   create_igw         = false
   enable_nat_gateway = false
 }
+
+resource "aws_security_group" "lambda" {
+  name_prefix = "${var.proyecto}-lambda-"
+  description = "Lambdas dentro de la VPC"
+  vpc_id      = module.vpc.vpc_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "vpce" {
+  name_prefix = "${var.proyecto}-vpce-"
+  description = "Interface endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_a_rds" {
+  security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.rds.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_desde_lambda" {
+  security_group_id            = aws_security_group.rds.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_a_vpce" {
+  security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.vpce.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpce_desde_lambda" {
+  security_group_id            = aws_security_group.vpce.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id              = module.vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.endpoint_una_az ? [module.vpc.private_subnets[0]] : module.vpc.private_subnets
+  security_group_ids  = [aws_security_group.vpce.id]
+  private_dns_enabled = true
+}
