@@ -1,3 +1,12 @@
+locals {
+  capas_db   = [aws_lambda_layer_version.db.arn, aws_lambda_layer_version.rds_ca.arn]
+  entorno_db = { DB_SECRET_ARN = aws_secretsmanager_secret.db.arn }
+  vpc_lambda = {
+    subnet_ids         = module.vpc.private_subnets
+    security_group_ids = [aws_security_group.lambda.id]
+  }
+}
+
 data "archive_file" "layer_db" {
   type        = "zip"
   source_dir  = "${path.module}/layers/db"
@@ -43,20 +52,24 @@ resource "aws_lambda_layer_version" "rds_ca" {
 module "migrar_esquema" {
   source = "./modules/lambda_function"
 
-  nombre     = "${var.proyecto}-migrar-esquema"
-  source_dir = "${path.module}/lambdas/migrar-esquema"
-  role_arn   = data.aws_iam_role.lab.arn
-  timeout    = 60
-  layers     = [aws_lambda_layer_version.db.arn, aws_lambda_layer_version.rds_ca.arn]
+  nombre      = "${var.proyecto}-migrar-esquema"
+  source_dir  = "${path.module}/lambdas/migrar-esquema"
+  role_arn    = data.aws_iam_role.lab.arn
+  timeout     = 60
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
 
-  environment = {
-    DB_SECRET_ARN = aws_secretsmanager_secret.db.arn
-  }
+module "api_comercios" {
+  source = "./modules/lambda_function"
 
-  vpc_config = {
-    subnet_ids         = module.vpc.private_subnets
-    security_group_ids = [aws_security_group.lambda.id]
-  }
+  nombre      = "${var.proyecto}-api-comercios"
+  source_dir  = "${path.module}/lambdas/api-comercios"
+  role_arn    = data.aws_iam_role.lab.arn
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
 }
 
 resource "aws_lambda_invocation" "migrar_esquema" {

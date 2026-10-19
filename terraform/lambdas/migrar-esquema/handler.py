@@ -10,4 +10,3 @@ def handler(event, context):
     conn.run(SCHEMA)
     version = conn.run("SELECT postgis_version()")[0][0]
     return {"postgis": version}
-    

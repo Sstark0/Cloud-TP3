@@ -29,4 +29,15 @@ def conexion():
             ssl_context=ssl.create_default_context(cafile=CA_BUNDLE),
         )
     return _conn
+
+def consultar(sql, **params):
+    global _conn
+    conn = conexion()
+    try:
+        filas = conn.run(sql, **params)
+    except pg8000.native.InterfaceError:
+        _conn = None
+        raise
+    columnas = [c["name"] for c in conn.columns]
+    return [dict(zip(columnas, fila)) for fila in filas]
     
