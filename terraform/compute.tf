@@ -150,6 +150,19 @@ module "actualizar_posicion" {
   vpc_config  = local.vpc_lambda
 }
 
+module "archivar_posiciones" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-archivar-posiciones"
+  source_dir = "${path.module}/lambdas/archivar-posiciones"
+  role_arn   = data.aws_iam_role.lab.arn
+  timeout    = 30
+
+  environment = {
+    BUCKET = aws_s3_bucket.archivos.bucket
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

@@ -13,6 +13,7 @@ resource "aws_kinesis_stream" "posiciones" {
 locals {
   consumidores_posiciones = {
     actualizar-posicion = module.actualizar_posicion.arn
+    archivar-posiciones = module.archivar_posiciones.arn
   }
 }
 
