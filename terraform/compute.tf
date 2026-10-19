@@ -1,5 +1,6 @@
 locals {
-  capas_db   = [aws_lambda_layer_version.db.arn, aws_lambda_layer_version.rds_ca.arn]
+  capas_db   = [aws_lambda_layer_version.codigo["db"].arn, aws_lambda_layer_version.rds_ca.arn]
+  capa_api   = aws_lambda_layer_version.codigo["api"].arn
   entorno_db = { DB_SECRET_ARN = aws_secretsmanager_secret.db.arn }
   vpc_lambda = {
     subnet_ids         = module.vpc.private_subnets
@@ -7,17 +8,21 @@ locals {
   }
 }
 
-data "archive_file" "layer_db" {
+data "archive_file" "layer" {
+  for_each = toset(["db", "api"])
+
   type        = "zip"
-  source_dir  = "${path.module}/layers/db"
-  output_path = "${path.module}/.build/layer-db.zip"
+  source_dir  = "${path.module}/layers/${each.key}"
+  output_path = "${path.module}/.build/layer-${each.key}.zip"
   excludes    = ["**/__pycache__/**"]
 }
 
-resource "aws_lambda_layer_version" "db" {
-  layer_name          = "${var.proyecto}-db"
-  filename            = data.archive_file.layer_db.output_path
-  source_code_hash    = data.archive_file.layer_db.output_base64sha256
+resource "aws_lambda_layer_version" "codigo" {
+  for_each = data.archive_file.layer
+
+  layer_name          = "${var.proyecto}-${each.key}"
+  filename            = each.value.output_path
+  source_code_hash    = each.value.output_base64sha256
   compatible_runtimes = ["python3.12"]
 }
 
@@ -67,7 +72,7 @@ module "api_comercios" {
   nombre      = "${var.proyecto}-api-comercios"
   source_dir  = "${path.module}/lambdas/api-comercios"
   role_arn    = data.aws_iam_role.lab.arn
-  layers      = local.capas_db
+  layers      = concat(local.capas_db, [local.capa_api])
   environment = local.entorno_db
   vpc_config  = local.vpc_lambda
 }
@@ -78,6 +83,7 @@ module "recibir_pedido" {
   nombre     = "${var.proyecto}-recibir-pedido"
   source_dir = "${path.module}/lambdas/recibir-pedido"
   role_arn   = data.aws_iam_role.lab.arn
+  layers     = [local.capa_api]
 
   environment = {
     QUEUE_URL = aws_sqs_queue.pedidos.url
