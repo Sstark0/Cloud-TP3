@@ -84,6 +84,18 @@ module "recibir_pedido" {
   }
 }
 
+module "crear_pedido" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-crear-pedido"
+  source_dir  = "${path.module}/lambdas/crear-pedido"
+  role_arn    = data.aws_iam_role.lab.arn
+  timeout     = 15
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

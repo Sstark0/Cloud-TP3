@@ -1,0 +1,41 @@
+{
+  "Comment": "Procesa un pedido desde que sale de la cola",
+  "StartAt": "CrearPedido",
+  "States": {
+    "CrearPedido": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${crear_pedido_arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "total.$": "$.Payload.total"
+      },
+      "ResultPath": "$.creado",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["PedidoInvalido"],
+          "Next": "PedidoRechazado"
+        }
+      ],
+      "End": true
+    },
+    "PedidoRechazado": {
+      "Type": "Succeed"
+    }
+  }
+}

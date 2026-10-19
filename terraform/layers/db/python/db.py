@@ -1,6 +1,7 @@
 import json
 import os
 import ssl
+from contextlib import contextmanager
 
 import boto3
 import pg8000.native
@@ -40,4 +41,14 @@ def consultar(sql, **params):
         raise
     columnas = [c["name"] for c in conn.columns]
     return [dict(zip(columnas, fila)) for fila in filas]
-    
+
+@contextmanager
+def transaccion():
+    conn = conexion()
+    conn.run("START TRANSACTION")
+    try:
+        yield
+        conn.run("COMMIT")
+    except Exception:
+        conn.run("ROLLBACK")
+        raise

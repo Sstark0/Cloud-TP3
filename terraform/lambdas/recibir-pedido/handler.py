@@ -48,6 +48,8 @@ def _validar(datos):
     ]
     if not items or any(i["cantidad"] <= 0 for i in items):
         raise ValueError("items vacio o con cantidad invalida")
+    if len({i["producto_id"] for i in items}) != len(items):
+        raise ValueError("productos repetidos")
 
     entrega = datos["entrega"]
     lat, lng = float(entrega["lat"]), float(entrega["lng"])
@@ -68,4 +70,3 @@ def _respuesta(estado, cuerpo):
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(cuerpo),
     }
-    
