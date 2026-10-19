@@ -96,6 +96,18 @@ module "crear_pedido" {
   vpc_config  = local.vpc_lambda
 }
 
+module "iniciar_proceso" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-iniciar-proceso"
+  source_dir = "${path.module}/lambdas/iniciar-proceso"
+  role_arn   = data.aws_iam_role.lab.arn
+
+  environment = {
+    STATE_MACHINE_ARN = aws_sfn_state_machine.procesar_pedido.arn
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
