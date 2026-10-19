@@ -52,3 +52,9 @@ CREATE TABLE IF NOT EXISTS pedido_evento (
 );
 
 CREATE INDEX IF NOT EXISTS pedido_evento_pedido_idx ON pedido_evento (pedido_id);
+
+CREATE TABLE IF NOT EXISTS repartidor (
+    id         text PRIMARY KEY,
+    disponible boolean NOT NULL DEFAULT false,
+    creado_en  timestamptz NOT NULL DEFAULT now()
+);

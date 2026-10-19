@@ -114,6 +114,17 @@ module "iniciar_proceso" {
   }
 }
 
+module "api_repartidores" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-api-repartidores"
+  source_dir  = "${path.module}/lambdas/api-repartidores"
+  role_arn    = data.aws_iam_role.lab.arn
+  layers      = concat(local.capas_db, [local.capa_api])
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

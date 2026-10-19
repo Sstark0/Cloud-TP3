@@ -46,14 +46,16 @@ resource "aws_apigatewayv2_stage" "default" {
 
 locals {
   lambdas_api = {
-    api-comercios  = module.api_comercios
-    recibir-pedido = module.recibir_pedido
+    api-comercios    = module.api_comercios
+    recibir-pedido   = module.recibir_pedido
+    api-repartidores = module.api_repartidores
   }
 
   rutas = {
     "GET /comercios"                = "api-comercios"
     "GET /comercios/{id}/productos" = "api-comercios"
     "POST /pedidos"                 = "recibir-pedido"
+    "PUT /repartidores/me/estado"   = "api-repartidores"
   }
 }
 
