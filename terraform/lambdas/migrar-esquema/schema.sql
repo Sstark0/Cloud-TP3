@@ -58,3 +58,12 @@ CREATE TABLE IF NOT EXISTS repartidor (
     disponible boolean NOT NULL DEFAULT false,
     creado_en  timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS repartidor_posicion (
+    repartidor_id  text PRIMARY KEY REFERENCES repartidor (id),
+    ubicacion      geography(Point, 4326) NOT NULL,
+    actualizado_en timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS repartidor_posicion_gist
+    ON repartidor_posicion USING gist (ubicacion);

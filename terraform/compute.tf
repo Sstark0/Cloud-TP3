@@ -138,6 +138,18 @@ module "registrar_posicion" {
   }
 }
 
+module "actualizar_posicion" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-actualizar-posicion"
+  source_dir  = "${path.module}/lambdas/actualizar-posicion"
+  role_arn    = data.aws_iam_role.lab.arn
+  timeout     = 30
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

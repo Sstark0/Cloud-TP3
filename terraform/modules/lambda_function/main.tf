@@ -2,6 +2,7 @@ data "archive_file" "zip" {
   type        = "zip"
   source_dir  = var.source_dir
   output_path = "${path.root}/.build/${var.nombre}.zip"
+  excludes    = ["**/__pycache__/**"]
 }
 
 resource "aws_cloudwatch_log_group" "this" {
