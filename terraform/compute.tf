@@ -72,6 +72,18 @@ module "api_comercios" {
   vpc_config  = local.vpc_lambda
 }
 
+module "recibir_pedido" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-recibir-pedido"
+  source_dir = "${path.module}/lambdas/recibir-pedido"
+  role_arn   = data.aws_iam_role.lab.arn
+
+  environment = {
+    QUEUE_URL = aws_sqs_queue.pedidos.url
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
