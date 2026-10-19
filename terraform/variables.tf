@@ -57,3 +57,8 @@ variable "asignacion_radio_metros" {
   type    = number
   default = 5000
 }
+
+variable "asignacion_timeout_segundos" {
+  type    = number
+  default = 60
+}
