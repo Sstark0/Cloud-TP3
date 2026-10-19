@@ -125,6 +125,19 @@ module "api_repartidores" {
   vpc_config  = local.vpc_lambda
 }
 
+module "registrar_posicion" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-registrar-posicion"
+  source_dir = "${path.module}/lambdas/registrar-posicion"
+  role_arn   = data.aws_iam_role.lab.arn
+  layers     = [local.capa_api]
+
+  environment = {
+    STREAM_NAME = aws_kinesis_stream.posiciones.name
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
