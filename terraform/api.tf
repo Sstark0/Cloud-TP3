@@ -46,18 +46,21 @@ resource "aws_apigatewayv2_stage" "default" {
 
 locals {
   lambdas_api = {
-    api-comercios      = module.api_comercios
-    recibir-pedido     = module.recibir_pedido
-    api-repartidores   = module.api_repartidores
-    registrar-posicion = module.registrar_posicion
+    api-comercios        = module.api_comercios
+    recibir-pedido       = module.recibir_pedido
+    api-repartidores     = module.api_repartidores
+    registrar-posicion   = module.registrar_posicion
+    responder-asignacion = module.responder_asignacion
   }
 
   rutas = {
-    "GET /comercios"                = "api-comercios"
-    "GET /comercios/{id}/productos" = "api-comercios"
-    "POST /pedidos"                 = "recibir-pedido"
-    "PUT /repartidores/me/estado"   = "api-repartidores"
-    "PUT /repartidores/me/posicion" = "registrar-posicion"
+    "GET /comercios"                    = "api-comercios"
+    "GET /comercios/{id}/productos"     = "api-comercios"
+    "POST /pedidos"                     = "recibir-pedido"
+    "PUT /repartidores/me/estado"       = "api-repartidores"
+    "PUT /repartidores/me/posicion"     = "registrar-posicion"
+    "GET /asignaciones/pendientes"      = "api-repartidores"
+    "POST /asignaciones/{id}/respuesta" = "responder-asignacion"
   }
 }
 

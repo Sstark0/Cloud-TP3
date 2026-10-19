@@ -21,6 +21,5 @@ def respuesta(estado, cuerpo):
     return {
         "statusCode": estado,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(cuerpo),
+        "body": json.dumps(cuerpo, default=str),
     }
-    

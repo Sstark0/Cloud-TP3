@@ -15,6 +15,8 @@ def handler(event, context):
             return {"estado": "CANCELADO"}
 
         repartidor_id = event["repartidor_id"]
+        if resultado == "ACEPTADA" and event.get("respondio") != repartidor_id:
+            raise ValueError("acepto un repartidor distinto al ofrecido")
         db.consultar(
             "UPDATE asignacion SET estado = :resultado, respondido_en = now()"
             " WHERE pedido_id = :pedido AND repartidor_id = :repartidor"
@@ -48,4 +50,3 @@ def _cambiar_estado(pedido_id, estado):
             id=pedido_id,
             estado=estado,
         )
-        

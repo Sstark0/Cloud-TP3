@@ -201,6 +201,15 @@ module "cerrar_asignacion" {
   vpc_config  = local.vpc_lambda
 }
 
+module "responder_asignacion" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-responder-asignacion"
+  source_dir = "${path.module}/lambdas/responder-asignacion"
+  role_arn   = data.aws_iam_role.lab.arn
+  layers     = [local.capa_api]
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
