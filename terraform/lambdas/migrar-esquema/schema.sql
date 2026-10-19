@@ -67,3 +67,21 @@ CREATE TABLE IF NOT EXISTS repartidor_posicion (
 
 CREATE INDEX IF NOT EXISTS repartidor_posicion_gist
     ON repartidor_posicion USING gist (ubicacion);
+
+ALTER TABLE pedido ADD COLUMN IF NOT EXISTS repartidor_id text REFERENCES repartidor (id);
+
+CREATE TABLE IF NOT EXISTS asignacion (
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pedido_id     uuid NOT NULL REFERENCES pedido (id),
+    repartidor_id text NOT NULL REFERENCES repartidor (id),
+    task_token    text NOT NULL,
+    estado        text NOT NULL DEFAULT 'PENDIENTE'
+                  CHECK (estado IN ('PENDIENTE', 'ACEPTADA', 'RECHAZADA', 'VENCIDA')),
+    creado_en     timestamptz NOT NULL DEFAULT now(),
+    respondido_en timestamptz,
+    UNIQUE (pedido_id, repartidor_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS asignacion_una_pendiente
+    ON asignacion (repartidor_id) WHERE estado = 'PENDIENTE';
+    

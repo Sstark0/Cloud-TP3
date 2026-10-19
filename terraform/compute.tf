@@ -163,6 +163,22 @@ module "archivar_posiciones" {
   }
 }
 
+module "buscar_repartidor" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-buscar-repartidor"
+  source_dir = "${path.module}/lambdas/buscar-repartidor"
+  role_arn   = data.aws_iam_role.lab.arn
+  timeout    = 15
+  layers     = local.capas_db
+  vpc_config = local.vpc_lambda
+
+  environment = merge(local.entorno_db, {
+    MAX_INTENTOS = tostring(var.asignacion_max_intentos)
+    RADIO_METROS = tostring(var.asignacion_radio_metros)
+  })
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

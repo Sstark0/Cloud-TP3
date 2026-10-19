@@ -42,3 +42,18 @@ variable "endpoint_una_az" {
   type    = bool
   default = true
 }
+
+variable "asignacion_max_intentos" {
+  type    = number
+  default = 3
+
+  validation {
+    condition     = var.asignacion_max_intentos >= 1 && var.asignacion_max_intentos <= 10
+    error_message = "asignacion_max_intentos tiene que estar entre 1 y 10."
+  }
+}
+
+variable "asignacion_radio_metros" {
+  type    = number
+  default = 5000
+}
