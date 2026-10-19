@@ -179,6 +179,28 @@ module "buscar_repartidor" {
   })
 }
 
+module "ofrecer_pedido" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-ofrecer-pedido"
+  source_dir  = "${path.module}/lambdas/ofrecer-pedido"
+  role_arn    = data.aws_iam_role.lab.arn
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
+module "cerrar_asignacion" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-cerrar-asignacion"
+  source_dir  = "${path.module}/lambdas/cerrar-asignacion"
+  role_arn    = data.aws_iam_role.lab.arn
+  layers      = local.capas_db
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
