@@ -52,6 +52,7 @@ locals {
     registrar-posicion   = module.registrar_posicion
     responder-asignacion = module.responder_asignacion
     api-pedidos          = module.api_pedidos
+    url-comprobante      = module.url_comprobante
   }
 
   rutas = {
@@ -65,6 +66,7 @@ locals {
     "GET /pedidos"                      = "api-pedidos"
     "GET /pedidos/{id}"                 = "api-pedidos"
     "POST /pedidos/{id}/calificacion"   = "api-pedidos"
+    "POST /pedidos/{id}/comprobante"    = "url-comprobante"
   }
 }
 

@@ -221,6 +221,19 @@ module "api_pedidos" {
   vpc_config  = local.vpc_lambda
 }
 
+module "url_comprobante" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-url-comprobante"
+  source_dir = "${path.module}/lambdas/url-comprobante"
+  role_arn   = data.aws_iam_role.lab.arn
+  layers     = [local.capa_api]
+
+  environment = {
+    BUCKET = aws_s3_bucket.archivos.bucket
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

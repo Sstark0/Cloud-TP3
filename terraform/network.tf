@@ -100,3 +100,34 @@ resource "aws_vpc_endpoint" "secretsmanager" {
   security_group_ids  = [aws_security_group.vpce.id]
   private_dns_enabled = true
 }
+
+data "aws_iam_policy_document" "vpce_s3" {
+  statement {
+    actions = ["s3:GetObject", "s3:ListBucket"]
+    resources = [
+      aws_s3_bucket.archivos.arn,
+      "${aws_s3_bucket.archivos.arn}/comprobantes/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc.private_route_table_ids
+  policy            = data.aws_iam_policy_document.vpce_s3.json
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_a_s3" {
+  security_group_id = aws_security_group.lambda.id
+  prefix_list_id    = aws_vpc_endpoint.s3.prefix_list_id
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
