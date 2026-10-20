@@ -32,7 +32,7 @@ def handler(event, context):
         cambiado = db.consultar(
             "UPDATE pedido SET estado = 'ENTREGADO', comprobante = :clave"
             " WHERE id = :id AND repartidor_id = :repartidor AND estado = 'ASIGNADO'"
-            " RETURNING id",
+            " RETURNING cliente_id",
             clave=clave,
             id=pedido_id,
             repartidor=repartidor_id,
@@ -42,15 +42,15 @@ def handler(event, context):
                 "INSERT INTO pedido_evento (pedido_id, estado) VALUES (:id, 'ENTREGADO')",
                 id=pedido_id,
             )
-            return {"estado": "ENTREGADO"}
+            return {"estado": "ENTREGADO", "cliente_id": cambiado[0]["cliente_id"]}
 
         ya_entregado = db.consultar(
-            "SELECT 1 FROM pedido WHERE id = :id AND repartidor_id = :repartidor"
+            "SELECT cliente_id FROM pedido WHERE id = :id AND repartidor_id = :repartidor"
             " AND estado = 'ENTREGADO'",
             id=pedido_id,
             repartidor=repartidor_id,
         )
     if ya_entregado:
-        return {"estado": "ENTREGADO"}
+        return {"estado": "ENTREGADO", "cliente_id": ya_entregado[0]["cliente_id"]}
     raise EntregaInvalida(f"el pedido {pedido_id} no esta asignado a este repartidor")
     

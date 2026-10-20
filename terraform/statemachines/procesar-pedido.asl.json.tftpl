@@ -13,7 +13,24 @@
       "ResultPath": "$.creado",
       "Retry": ${retry_lambda},
       "Catch": [
-        { "ErrorEquals": ["PedidoInvalido"], "ResultPath": "$.error", "Next": "PedidoRechazado" }
+        { "ErrorEquals": ["PedidoInvalido"], "ResultPath": "$.error", "Next": "NotificarRechazado" }
+      ],
+      "Next": "NotificarCreado"
+    },
+    "NotificarCreado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "cliente_id.$": "$.cliente_id",
+          "estado": "CREADO"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "BuscarRepartidor" }
       ],
       "Next": "BuscarRepartidor"
     },
@@ -68,6 +85,24 @@
       "ResultSelector": { "estado.$": "$.Payload.estado" },
       "ResultPath": "$.cierre",
       "Retry": ${retry_lambda},
+      "Next": "NotificarAsignado"
+    },
+    "NotificarAsignado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "cliente_id.$": "$.cliente_id",
+          "repartidor_id.$": "$.candidato.repartidor_id",
+          "estado.$": "$.cierre.estado"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "Fin" }
+      ],
       "End": true
     },
     "Rechazada": {
@@ -113,9 +148,43 @@
       "ResultSelector": { "estado.$": "$.Payload.estado" },
       "ResultPath": "$.cierre",
       "Retry": ${retry_lambda},
+      "Next": "NotificarCancelado"
+    },
+    "NotificarCancelado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "cliente_id.$": "$.cliente_id",
+          "estado.$": "$.cierre.estado"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "Fin" }
+      ],
       "End": true
     },
-    "PedidoRechazado": {
+    "NotificarRechazado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${topic_estado_arn}",
+        "Message": {
+          "pedido_id.$": "$.pedido_id",
+          "cliente_id.$": "$.cliente_id",
+          "estado": "RECHAZADO"
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error_notificacion", "Next": "Fin" }
+      ],
+      "End": true
+    },
+    "Fin": {
       "Type": "Succeed"
     }
   }

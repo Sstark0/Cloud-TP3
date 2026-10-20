@@ -25,6 +25,7 @@ resource "aws_sfn_state_machine" "procesar_pedido" {
     cerrar_asignacion_arn = module.cerrar_asignacion.arn
     timeout_oferta        = var.asignacion_timeout_segundos
     retry_lambda          = local.retry_lambda
+    topic_estado_arn      = aws_sns_topic.estado_pedido.arn
   })
 }
 
@@ -36,5 +37,6 @@ resource "aws_sfn_state_machine" "confirmar_entrega" {
   definition = templatefile("${path.module}/statemachines/confirmar-entrega.asl.json.tftpl", {
     marcar_entregado_arn = module.marcar_entregado.arn
     reintento_lambda     = jsonencode(local.reintento_lambda)
+    topic_estado_arn     = aws_sns_topic.estado_pedido.arn
   })
 }
