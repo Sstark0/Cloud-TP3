@@ -34,6 +34,15 @@ resource "aws_cognito_user_pool_client" "app" {
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret               = false
-  explicit_auth_flows           = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
   prevent_user_existence_errors = "ENABLED"
+
+  # SRP es el login del frontend. ADMIN_USER_PASSWORD_AUTH solo se puede usar
+  # con credenciales IAM (cognito-idp:AdminInitiateAuth), nunca desde el
+  # navegador. Lo usa scripts/verificar-apply.sh para pedir tokens de usuarios
+  # de prueba.
+  explicit_auth_flows = [
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH",
+  ]
 }

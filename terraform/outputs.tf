@@ -1,3 +1,15 @@
+output "proyecto" {
+  value = var.proyecto
+}
+
+output "stream_posiciones" {
+  value = aws_kinesis_stream.posiciones.name
+}
+
+output "bucket_archivos" {
+  value = aws_s3_bucket.archivos.id
+}
+
 output "migracion" {
   value = jsondecode(aws_lambda_invocation.migrar_esquema.result)
 }
