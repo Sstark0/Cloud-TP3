@@ -11,6 +11,14 @@ def handler(event, context):
 
     with db.transaccion():
         if resultado == "CANCELADO":
+            # Si quedo una oferta abierta, se cierra: si no, el indice
+            # asignacion_una_pendiente deja a ese repartidor sin poder recibir
+            # ninguna oferta mas.
+            db.consultar(
+                "UPDATE asignacion SET estado = 'VENCIDA', respondido_en = now()"
+                " WHERE pedido_id = :pedido AND estado = 'PENDIENTE'",
+                pedido=pedido_id,
+            )
             _cambiar_estado(pedido_id, "CANCELADO")
             return {"estado": "CANCELADO"}
 
@@ -27,21 +35,22 @@ def handler(event, context):
         )
 
         if resultado == "ACEPTADA":
-            db.consultar(
-                "UPDATE pedido SET repartidor_id = :repartidor WHERE id = :pedido",
-                repartidor=repartidor_id,
-                pedido=pedido_id,
-            )
-            _cambiar_estado(pedido_id, "ASIGNADO")
-            return {"estado": "ASIGNADO", "repartidor_id": repartidor_id}
+            # Repartidor y estado en la misma sentencia: si el pedido ya no
+            # esta CREADO (por ejemplo, se cancelo), no se le asigna a nadie.
+            if _cambiar_estado(pedido_id, "ASIGNADO", repartidor_id):
+                return {"estado": "ASIGNADO", "repartidor_id": repartidor_id}
+            return {"estado": "NO_ASIGNABLE"}
 
     return {"estado": resultado}
 
 
-def _cambiar_estado(pedido_id, estado):
+def _cambiar_estado(pedido_id, estado, repartidor_id=None):
     cambiado = db.consultar(
-        "UPDATE pedido SET estado = :estado WHERE id = :id AND estado = 'CREADO' RETURNING id",
+        "UPDATE pedido SET estado = :estado,"
+        " repartidor_id = COALESCE(:repartidor, repartidor_id)"
+        " WHERE id = :id AND estado = 'CREADO' RETURNING id",
         estado=estado,
+        repartidor=repartidor_id,
         id=pedido_id,
     )
     if cambiado:
@@ -50,3 +59,4 @@ def _cambiar_estado(pedido_id, estado):
             id=pedido_id,
             estado=estado,
         )
+    return bool(cambiado)
