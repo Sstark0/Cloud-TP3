@@ -210,6 +210,17 @@ module "responder_asignacion" {
   layers     = [local.capa_api]
 }
 
+module "api_pedidos" {
+  source = "./modules/lambda_function"
+
+  nombre      = "${var.proyecto}-api-pedidos"
+  source_dir  = "${path.module}/lambdas/api-pedidos"
+  role_arn    = data.aws_iam_role.lab.arn
+  layers      = concat(local.capas_db, [local.capa_api])
+  environment = local.entorno_db
+  vpc_config  = local.vpc_lambda
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

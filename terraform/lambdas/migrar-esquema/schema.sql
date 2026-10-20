@@ -84,4 +84,10 @@ CREATE TABLE IF NOT EXISTS asignacion (
 
 CREATE UNIQUE INDEX IF NOT EXISTS asignacion_una_pendiente
     ON asignacion (repartidor_id) WHERE estado = 'PENDIENTE';
-    
+
+CREATE TABLE IF NOT EXISTS calificacion (
+    pedido_id  uuid PRIMARY KEY REFERENCES pedido (id),
+    puntaje    smallint NOT NULL CHECK (puntaje BETWEEN 1 AND 5),
+    comentario text,
+    creado_en  timestamptz NOT NULL DEFAULT now()
+);

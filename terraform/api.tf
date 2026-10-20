@@ -51,6 +51,7 @@ locals {
     api-repartidores     = module.api_repartidores
     registrar-posicion   = module.registrar_posicion
     responder-asignacion = module.responder_asignacion
+    api-pedidos          = module.api_pedidos
   }
 
   rutas = {
@@ -61,6 +62,9 @@ locals {
     "PUT /repartidores/me/posicion"     = "registrar-posicion"
     "GET /asignaciones/pendientes"      = "api-repartidores"
     "POST /asignaciones/{id}/respuesta" = "responder-asignacion"
+    "GET /pedidos"                      = "api-pedidos"
+    "GET /pedidos/{id}"                 = "api-pedidos"
+    "POST /pedidos/{id}/calificacion"   = "api-pedidos"
   }
 }
 
