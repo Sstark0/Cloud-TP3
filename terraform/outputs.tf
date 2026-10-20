@@ -13,3 +13,7 @@ output "cognito_client_ids" {
 output "api_url" {
   value = aws_apigatewayv2_api.main.api_endpoint
 }
+
+output "cola_posiciones_fallidas" {
+  value = aws_sqs_queue.posiciones_fallidas.url
+}

@@ -33,6 +33,17 @@ variable "vpc_cidr" {
   }
 }
 
+variable "archivo_ventana_segundos" {
+  description = "Segundos que archivar-posiciones junta posiciones antes de escribir un objeto en S3."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.archivo_ventana_segundos >= 1 && var.archivo_ventana_segundos <= 300
+    error_message = "Kinesis admite una ventana de 1 a 300 segundos."
+  }
+}
+
 variable "db_instance_class" {
   type    = string
   default = "db.t3.micro"
