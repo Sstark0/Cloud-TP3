@@ -24,3 +24,22 @@ resource "aws_lambda_event_source_mapping" "pedidos" {
   batch_size              = 10
   function_response_types = ["ReportBatchItemFailures"]
 }
+
+resource "aws_sns_topic" "estado_pedido" {
+  name              = "${var.proyecto}-estado-pedido"
+  kms_master_key_id = "alias/aws/sns"
+}
+
+resource "aws_sns_topic_subscription" "notificar" {
+  topic_arn = aws_sns_topic.estado_pedido.arn
+  protocol  = "lambda"
+  endpoint  = module.notificar.arn
+}
+
+resource "aws_lambda_permission" "sns_notificar" {
+  statement_id  = "AllowSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = module.notificar.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.estado_pedido.arn
+}

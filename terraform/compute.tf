@@ -262,6 +262,14 @@ module "recibir_entrega" {
   }
 }
 
+module "notificar" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-notificar"
+  source_dir = "${path.module}/lambdas/notificar"
+  role_arn   = data.aws_iam_role.lab.arn
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})
