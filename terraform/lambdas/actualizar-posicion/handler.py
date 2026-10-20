@@ -1,16 +1,29 @@
 import base64
 import json
+import logging
 
 import db
+
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
 
 def handler(event, context):
     ultimas = {}
+    descartados = 0
     for registro in event["Records"]:
-        posicion = json.loads(base64.b64decode(registro["kinesis"]["data"]))
-        actual = ultimas.get(posicion["repartidor_id"])
-        if actual is None or posicion["ts"] > actual["ts"]:
-            ultimas[posicion["repartidor_id"]] = posicion
+        try:
+            posicion = json.loads(base64.b64decode(registro["kinesis"]["data"]))
+            repartidor_id, ts = posicion["repartidor_id"], posicion["ts"]
+        except (ValueError, KeyError, TypeError):
+            # Un registro roto no puede trabar el shard: se descarta y queda
+            # igual archivado en S3 por el otro consumidor.
+            log.warning("registro descartado: %s", registro["kinesis"]["sequenceNumber"])
+            descartados += 1
+            continue
+        actual = ultimas.get(repartidor_id)
+        if actual is None or ts > actual["ts"]:
+            ultimas[repartidor_id] = posicion
 
     with db.transaccion():
         for p in ultimas.values():
@@ -26,3 +39,11 @@ def handler(event, context):
                 lng=p["lng"],
                 ts=p["ts"],
             )
+
+    resumen = {
+        "recibidos": len(event["Records"]),
+        "descartados": descartados,
+        "repartidores": len(ultimas),
+    }
+    log.info(json.dumps(resumen))
+    return resumen
