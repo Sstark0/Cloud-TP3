@@ -49,6 +49,33 @@ variable "db_instance_class" {
   default = "db.t3.micro"
 }
 
+variable "historico_lifecycle" {
+  description = "Dias hasta pasar historico/ a Standard-IA, a Glacier Instant Retrieval y hasta borrarlo."
+  type = object({
+    dias_standard_ia = number
+    dias_glacier_ir  = number
+    dias_expiracion  = number
+  })
+  default = {
+    dias_standard_ia = 30
+    dias_glacier_ir  = 90
+    dias_expiracion  = 180
+  }
+
+  validation {
+    condition     = var.historico_lifecycle.dias_standard_ia >= 30
+    error_message = "S3 no permite pasar a Standard-IA antes de los 30 dias."
+  }
+
+  validation {
+    condition = (
+      var.historico_lifecycle.dias_standard_ia < var.historico_lifecycle.dias_glacier_ir &&
+      var.historico_lifecycle.dias_glacier_ir < var.historico_lifecycle.dias_expiracion
+    )
+    error_message = "Los dias van en orden: Standard-IA < Glacier IR < expiracion."
+  }
+}
+
 variable "endpoint_una_az" {
   type    = bool
   default = true
