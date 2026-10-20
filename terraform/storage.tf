@@ -41,14 +41,38 @@ resource "aws_s3_bucket_lifecycle_configuration" "archivos" {
       prefix = "historico/"
     }
 
+    transition {
+      days          = var.historico_lifecycle.dias_standard_ia
+      storage_class = "STANDARD_IA"
+    }
+
+    transition {
+      days          = var.historico_lifecycle.dias_glacier_ir
+      storage_class = "GLACIER_IR"
+    }
+
     expiration {
-      days = 180
+      days = var.historico_lifecycle.dias_expiracion
     }
 
     noncurrent_version_expiration {
       noncurrent_days = 7
     }
   }
+
+  rule {
+    id     = "multipart-incompletos"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  # Las reglas sobre versiones no actuales necesitan el versionado ya activo.
+  depends_on = [aws_s3_bucket_versioning.archivos]
 }
 
 data "aws_iam_policy_document" "archivos" {
