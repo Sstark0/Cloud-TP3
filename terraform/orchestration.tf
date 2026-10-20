@@ -1,5 +1,5 @@
 locals {
-  retry_lambda = jsonencode([{
+  reintento_lambda = {
     ErrorEquals = [
       "Lambda.ServiceException",
       "Lambda.AWSLambdaException",
@@ -9,7 +9,8 @@ locals {
     IntervalSeconds = 2
     MaxAttempts     = 3
     BackoffRate     = 2
-  }])
+  }
+  retry_lambda = jsonencode([local.reintento_lambda])
 }
 
 resource "aws_sfn_state_machine" "procesar_pedido" {
@@ -24,5 +25,16 @@ resource "aws_sfn_state_machine" "procesar_pedido" {
     cerrar_asignacion_arn = module.cerrar_asignacion.arn
     timeout_oferta        = var.asignacion_timeout_segundos
     retry_lambda          = local.retry_lambda
+  })
+}
+
+resource "aws_sfn_state_machine" "confirmar_entrega" {
+  name     = "${var.proyecto}-confirmar-entrega"
+  type     = "STANDARD"
+  role_arn = data.aws_iam_role.lab.arn
+
+  definition = templatefile("${path.module}/statemachines/confirmar-entrega.asl.json.tftpl", {
+    marcar_entregado_arn = module.marcar_entregado.arn
+    reintento_lambda     = jsonencode(local.reintento_lambda)
   })
 }

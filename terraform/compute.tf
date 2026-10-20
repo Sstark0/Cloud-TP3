@@ -234,6 +234,34 @@ module "url_comprobante" {
   }
 }
 
+module "marcar_entregado" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-marcar-entregado"
+  source_dir = "${path.module}/lambdas/marcar-entregado"
+  role_arn   = data.aws_iam_role.lab.arn
+  timeout    = 15
+  layers     = local.capas_db
+  vpc_config = local.vpc_lambda
+
+  environment = merge(local.entorno_db, {
+    BUCKET = aws_s3_bucket.archivos.bucket
+  })
+}
+
+module "recibir_entrega" {
+  source = "./modules/lambda_function"
+
+  nombre     = "${var.proyecto}-recibir-entrega"
+  source_dir = "${path.module}/lambdas/recibir-entrega"
+  role_arn   = data.aws_iam_role.lab.arn
+  layers     = [local.capa_api]
+
+  environment = {
+    STATE_MACHINE_ARN = aws_sfn_state_machine.confirmar_entrega.arn
+  }
+}
+
 resource "aws_lambda_invocation" "migrar_esquema" {
   function_name = module.migrar_esquema.function_name
   input         = jsonencode({})

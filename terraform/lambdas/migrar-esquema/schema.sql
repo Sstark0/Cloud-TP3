@@ -91,3 +91,5 @@ CREATE TABLE IF NOT EXISTS calificacion (
     comentario text,
     creado_en  timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE pedido ADD COLUMN IF NOT EXISTS comprobante text;

@@ -53,6 +53,7 @@ locals {
     responder-asignacion = module.responder_asignacion
     api-pedidos          = module.api_pedidos
     url-comprobante      = module.url_comprobante
+    recibir-entrega      = module.recibir_entrega
   }
 
   rutas = {
@@ -67,6 +68,7 @@ locals {
     "GET /pedidos/{id}"                 = "api-pedidos"
     "POST /pedidos/{id}/calificacion"   = "api-pedidos"
     "POST /pedidos/{id}/comprobante"    = "url-comprobante"
+    "POST /pedidos/{id}/entrega"        = "recibir-entrega"
   }
 }
 

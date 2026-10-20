@@ -1,0 +1,36 @@
+{
+  "Comment": "Verifica el comprobante de entrega y cierra el pedido",
+  "StartAt": "MarcarEntregado",
+  "States": {
+    "MarcarEntregado": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${marcar_entregado_arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "estado.$": "$.Payload.estado" },
+      "ResultPath": "$.resultado",
+      "Retry": [
+        {
+          "ErrorEquals": ["SinComprobante"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        },
+        ${reintento_lambda}
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["SinComprobante", "EntregaInvalida"],
+          "ResultPath": "$.error",
+          "Next": "EntregaRechazada"
+        }
+      ],
+      "End": true
+    },
+    "EntregaRechazada": {
+      "Type": "Succeed"
+    }
+  }
+}
