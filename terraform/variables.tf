@@ -100,3 +100,15 @@ variable "asignacion_timeout_segundos" {
   type    = number
   default = 60
 }
+
+variable "alerta_email" {
+  description = "Email que recibe las alarmas. Vacio = sin suscripcion."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.alerta_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alerta_email))
+    error_message = "alerta_email tiene que ser un email valido o quedar vacio."
+  }
+}
+

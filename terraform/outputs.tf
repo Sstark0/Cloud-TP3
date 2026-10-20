@@ -29,3 +29,8 @@ output "api_url" {
 output "cola_posiciones_fallidas" {
   value = aws_sqs_queue.posiciones_fallidas.url
 }
+
+output "topic_alertas" {
+  value = aws_sns_topic.alertas.arn
+}
+
