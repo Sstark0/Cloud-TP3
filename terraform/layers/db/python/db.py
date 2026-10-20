@@ -39,6 +39,9 @@ def consultar(sql, **params):
     except pg8000.native.InterfaceError:
         _conn = None
         raise
+    # INSERT/UPDATE sin RETURNING no devuelven columnas (conn.columns es None).
+    if conn.columns is None:
+        return []
     columnas = [c["name"] for c in conn.columns]
     return [dict(zip(columnas, fila)) for fila in filas]
 
