@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import { Check, Cruz } from "./iconos";
@@ -84,21 +84,35 @@ function icono(tipo) {
   return ICONOS[tipo];
 }
 
-// Encuadra el mapa sin pelearse con el usuario: re-encuadra cuando aparece o
-// desaparece un tipo de punto (por ejemplo, el repartidor) o cuando algún punto
-// se sale de la vista. Si el repartidor solo se mueve dentro de lo visible, el
-// mapa queda quieto y se puede hacer zoom o arrastrar.
-function Encuadre({ puntos }) {
+// Puntos que se mueven solos: el mapa los sigue mientras el usuario no lo toque.
+const MOVILES = new Set(["repartidor", "yo"]);
+
+// Encuadre automático en modo "seguir": re-encuadra cuando aparece o desaparece
+// un tipo de punto y cuando el repartidor se sale de la vista. En cuanto el
+// usuario arrastra o hace zoom, el mapa queda libre y no se mueve más solo,
+// hasta que toca "Centrar" (o aparece un punto nuevo).
+function Encuadre({ puntos, libre, setLibre, centrar }) {
   const map = useMap();
+  const propio = useRef(false); // el movimiento en curso lo hizo el código, no el usuario
   const tipos = puntos.map((p) => p.tipo).join("|");
   const encuadrar = () => {
+    propio.current = true;
+    setTimeout(() => (propio.current = false), 700);
     if (puntos.length === 1) map.setView([puntos[0].lat, puntos[0].lng], 15);
     else if (puntos.length > 1) map.fitBounds(puntos.map((p) => [p.lat, p.lng]), { padding: [48, 48], maxZoom: 16 });
   };
-  useEffect(encuadrar, [tipos, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMapEvents({
+    dragstart: () => setLibre(true),
+    zoomstart: () => propio.current || setLibre(true),
+  });
   useEffect(() => {
+    setLibre(false);
+    encuadrar();
+  }, [tipos, centrar, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (libre) return;
     const vista = map.getBounds().pad(-0.08);
-    if (puntos.some((p) => !vista.contains([p.lat, p.lng]))) encuadrar();
+    if (puntos.some((p) => MOVILES.has(p.tipo) && !vista.contains([p.lat, p.lng]))) encuadrar();
   });
   return null;
 }
@@ -128,7 +142,7 @@ function Punto({ punto, onArrastrar }) {
 
 const ESTILO_TRAZO = {
   hecho: { color: "#2457c5", weight: 4, opacity: 0.85 },
-  pendiente: { color: "#2457c5", weight: 3, opacity: 0.7, dashArray: "2 8", lineCap: "round" },
+  pendiente: { color: "#3d4452", weight: 4, opacity: 0.75, dashArray: "1 8", lineCap: "round" },
 };
 
 // puntos: [{ lat, lng, tipo: "comercio" | "destino" | "repartidor" | "yo", etiqueta }]
@@ -137,6 +151,8 @@ const ESTILO_TRAZO = {
 export function Mapa({ puntos, ruta, trazos = [], onClick, onArrastrar, alto = 260 }) {
   const validos = puntos.filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
   const centro = validos[0] || { lat: -34.6037, lng: -58.3816 };
+  const [libre, setLibre] = useState(false);
+  const [centrar, setCentrar] = useState(0);
   return (
     <div className={`mapa ${onClick ? "elegible" : ""}`} style={{ height: alto }}>
       <MapContainer center={[centro.lat, centro.lng]} zoom={14} scrollWheelZoom={false} style={{ height: "100%" }}>
@@ -153,9 +169,14 @@ export function Mapa({ puntos, ruta, trazos = [], onClick, onArrastrar, alto = 2
         {validos.map((p, i) => (
           <Punto key={`${p.tipo}-${i}`} punto={p} onArrastrar={onArrastrar} />
         ))}
-        <Encuadre puntos={validos} />
+        <Encuadre puntos={validos} libre={libre} setLibre={setLibre} centrar={centrar} />
         <Clicks onClick={onClick} />
       </MapContainer>
+      {libre && validos.length > 0 && (
+        <button type="button" className="btn chico mapa-centrar" onClick={() => setCentrar((n) => n + 1)}>
+          Centrar
+        </button>
+      )}
     </div>
   );
 }

@@ -549,6 +549,8 @@ function Seguimiento() {
                 { tipo: "comercio", texto: "Comercio" },
                 { tipo: "destino", texto: "Entrega" },
                 { tipo: "repartidor", texto: "Repartidor" },
+                ...(recorrido.length > 1 ? [{ tipo: "linea-hecho", texto: "Recorrido" }] : []),
+                ...(v ? [{ tipo: "linea-pendiente", texto: "Por recorrer" }] : []),
               ]}
             />
             {posHace != null && <span className="muted chico">Posición de hace {posHace} s</span>}

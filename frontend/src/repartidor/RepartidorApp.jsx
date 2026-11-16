@@ -111,6 +111,7 @@ function TarjetaPosicion({ modo, setModo, posicion, ultimoEnvio, errorEnvio, emi
           { tipo: "yo", texto: "Vos" },
           { tipo: "comercio", texto: pedido ? "Retiro" : "Comercio" },
           ...(pedido ? [{ tipo: "destino", texto: "Entrega" }] : []),
+          ...(rutaRestante ? [{ tipo: "linea-pendiente", texto: "Por recorrer" }] : []),
         ]}
       />
       <ErrorAviso error={errorEnvio} />
