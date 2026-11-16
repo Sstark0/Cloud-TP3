@@ -266,3 +266,56 @@ tfsec no reporta hallazgos abiertos. Cada regla que se acepta está marcada con 
 | `aws-lambda-enable-tracing` | Módulo `lambda_function` | X-Ray necesita `xray:PutTraceSegments` en el rol de ejecución, y LabRole no se puede modificar. El seguimiento se hace con las ejecuciones de Step Functions y CloudWatch Logs. |
 
 La retención de backups de RDS, que tfsec marcaba en 1 día, pasó a ser la variable `db_dias_backup` (7 días por defecto).
+
+---
+
+## 7. Resiliencia, costos y gobernanza
+
+### Continuidad del negocio
+
+Casi toda la arquitectura ya es multi-AZ sin configurar nada: Lambda, Step Functions, API Gateway, Kinesis, SQS, SNS, Cognito y S3 son servicios regionales que AWS replica entre zonas de disponibilidad. El único componente atado a una AZ es la instancia de RDS, y ahí se concentran las decisiones:
+
+| Estrategia | Cómo se aplica en el TP |
+|---|---|
+| **Backup & restore** | Dos capas. **Backups automáticos de RDS** (`db_dias_backup`, 7 días): restauración a cualquier punto en el tiempo, con RPO de ~5 minutos (RDS sube los logs de transacciones cada 5 minutos). **AWS Backup** (`backup_rds`): copia diaria en una bóveda propia, que sobrevive aunque se borre la instancia y es la que se puede copiar a otra región o cuenta. |
+| **Pilot light** | El propio repositorio: `deploy → apply` reconstruye las 162 piezas de la arquitectura en otra cuenta o región en ~15 minutos. Con una copia de AWS Backup llevada a esa región, la recuperación es "apply + restaurar la base". La infraestructura como código es lo que hace barato tener el piloto apagado. |
+| **Hot standby** | `db_multi_az = true`: RDS mantiene una réplica sincrónica en otra AZ y, si la primaria falla, mueve el endpoint en uno o dos minutos sin intervención. Durante el failover se cortan las conexiones abiertas: `db.py` las descarta y reconecta en la siguiente invocación. Queda en `false` por defecto porque duplica el costo de la instancia; se activa para producción o para la demo. |
+| **Warm standby / multi-site** | No aplican en el Learner Lab, que limita el trabajo a una región práctica. El camino sería una réplica de lectura de RDS en otra región (warm standby) o Aurora Global Database con la arquitectura desplegada en dos regiones y ruteo de Route 53 (multi-site). |
+
+**AWS Elastic Disaster Recovery** replica servidores (EC2 u on-premise) a nivel de bloque; esta arquitectura no tiene servidores que replicar. **AWS DMS** sirve para migrar o replicar una base de datos desde otro motor u origen; sería la herramienta para traer los datos de un sistema anterior a este RDS, no para su continuidad diaria.
+
+### Costos
+
+- **AWS Budgets** (`presupuesto_mensual_usd`, 50 USD): presupuesto mensual con dos avisos al topic de alertas: cuando el pronóstico del mes supera el 80 % y cuando el gasto real supera el 100 %. Es por cuenta y no por tags porque en el Learner Lab la cuenta es exclusiva del TP, y el filtro por tags exige activar las *cost allocation tags* en Billing, que el Lab no permite.
+- **Etiquetado:** `default_tags` del provider etiqueta todos los recursos con el proyecto. Es la base para separar costos con Cost Explorer en una cuenta compartida.
+- **Decisiones de diseño por costo:** sin NAT Gateway (los servicios se alcanzan por endpoints de VPC o desde Lambdas fuera de la VPC), `db.t3.micro`, un shard de Kinesis, lifecycle del histórico a Standard-IA y Glacier IR, y todo el cómputo serverless: si no hay pedidos, casi no hay costo.
+
+### Monitoreo
+
+- **Dashboard** `delivery-operacion` (output `dashboard_url`): en una sola pantalla, los pedidos (ejecuciones de las dos state machines), la API (pedidos, errores 4xx/5xx y latencia p90), los errores y throttles de todas las Lambdas, el ingreso a Kinesis y el atraso de sus consumidores, conexiones y CPU de RDS, y las colas de fallidos.
+- **Alarmas** al topic `alertas`: mensajes en las colas de fallidos, ejecuciones fallidas de cada workflow y el presupuesto.
+- **CloudTrail:** el historial de eventos de los últimos 90 días está activo por defecto en toda cuenta y alcanza para auditar quién creó o cambió qué. No se crea un trail propio porque necesitaría otro bucket S3, que en este Lab hay que crear fuera del provider (ver [sección 4](#4-lambda-recursos-base)).
+
+### Gobernanza en producción
+
+La cuenta del Learner Lab es administrada por AWS Academy, así que estos servicios no se pueden configurar desde el TP. En un despliegue real:
+
+| Servicio | Uso |
+|---|---|
+| **AWS Organizations + Control Tower** | Una cuenta por ambiente (desarrollo, staging, producción) bajo una landing zone, con guardrails comunes. |
+| **AWS Config** | Reglas que verifican continuamente lo que hoy revisa tfsec en cada PR: buckets sin acceso público, cifrado en reposo, backups habilitados, tags obligatorios. |
+| **Trusted Advisor** | Recomendaciones de costo y seguridad sobre la cuenta (las completas requieren plan de soporte Business). |
+| **Cost Explorer** | Análisis del gasto por servicio y por tag. |
+| **Systems Manager** | Parameter Store para configuración y, si hubiera instancias, parches y acceso sin SSH. En una arquitectura serverless su uso es acotado. |
+| **Resource Groups / Tag Editor** | Ver y operar todos los recursos del proyecto juntos a partir de sus tags. |
+
+### Well-Architected
+
+| Pilar | Decisiones del TP |
+|---|---|
+| **Excelencia operativa** | Infraestructura como código, despliegue desde el pipeline con prueba de humo, dashboard, alarmas, logs con retención definida. |
+| **Seguridad** | Cognito con grupos por rol y autorizador JWT, base en subred privada sin acceso público, credenciales en Secrets Manager por endpoint privado, TLS obligatorio en S3, cifrado en reposo, tfsec en cada PR con las excepciones justificadas. |
+| **Fiabilidad** | Reintentos con backoff y colas de fallidos, idempotencia (`crear-pedido`, nombre de ejecución por pedido), restricciones en la base que impiden estados inválidos (un pedido asignado por repartidor), reconexión a RDS, Multi-AZ y dos capas de backup. |
+| **Eficiencia de rendimiento** | Serverless con escalado automático, búsqueda del repartidor más cercano con índice GiST de PostGIS, Kinesis para absorber el volumen de posiciones sin presionar la base. |
+| **Optimización de costos** | Pago por uso, sin NAT Gateway, instancias mínimas, lifecycle del histórico, presupuesto con alertas. |
+| **Sostenibilidad** | Sin servidores ociosos: los recursos de cómputo solo consumen mientras hay pedidos. |

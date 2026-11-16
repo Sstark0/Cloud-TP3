@@ -24,8 +24,8 @@ resource "time_sleep" "logs" {
 }
 
 # Sin X-Ray: el trazado activo necesita xray:PutTraceSegments en el rol de
-# ejecucion. En el Learner Lab el rol es LabRole, que no se puede modificar, y
-# no esta confirmado que incluya ese permiso.
+# ejecucion. En el Learner Lab el rol es LabRole, que no se puede modificar y
+# no tiene ese permiso (iam simulate-principal-policy: implicitDeny).
 # El seguimiento de un pedido se hace con las ejecuciones de Step Functions y
 # los logs de CloudWatch.
 #tfsec:ignore:aws-lambda-enable-tracing
