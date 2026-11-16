@@ -6,7 +6,7 @@ import { Cargando, ErrorAviso, Estado, Leyenda, Mapa, Pasos } from "../component
 import { Atras, Buscar, Chevron, Local, Mira, Pin, Recibo } from "../components/iconos";
 import { config } from "../config";
 import { buscarDireccion, direccionDe } from "../geocodificacion";
-import { fechaHora, hora, parseFecha, precio, usePolling, useTick } from "../util";
+import { distancia, fechaHora, hora, parseFecha, precio, textoDistancia, textoMinutos, usePolling, useTick } from "../util";
 
 const FINALES = ["ENTREGADO", "CANCELADO", "RECHAZADO"];
 
@@ -303,7 +303,7 @@ function Pedidos() {
             <span className="crece">
               <strong>{p.comercio}</strong>
               <span className="muted chico bloque">
-                {fechaHora(p.creado_en)} · <span className="monto">{precio(p.total)}</span>
+                {fechaHora(p.creado_en)} · {p.estado === "RECHAZADO" ? "sin cargo" : <span className="monto">{precio(p.total)}</span>}
               </span>
             </span>
             <Estado estado={p.estado} />
@@ -315,6 +315,65 @@ function Pedidos() {
 }
 
 // ---------------------------------------------------------------- seguimiento
+const VELOCIDAD_DEFECTO = 25 / 3.6; // m/s, por si todavía no hay posiciones para medirla
+const RADIO_RETIRO_M = 60;
+
+// Recorrido del repartidor visto desde esta pantalla: guarda cada posición nueva
+// que llega por el polling (y la conserva en sessionStorage si se recarga).
+// La API solo devuelve la última posición; el historial completo se archiva en S3.
+function useRecorrido(id, pedido) {
+  const clave = `recorrido-${id}`;
+  const [recorrido, setRecorrido] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(clave)) || [];
+    } catch {
+      return [];
+    }
+  });
+  const marca = pedido?.repartidor_actualizado_en;
+  useEffect(() => {
+    if (!marca || pedido.repartidor_lat == null) return;
+    const t = parseFecha(marca)?.getTime();
+    setRecorrido((r) => {
+      if (r.length && r[r.length - 1].t === t) return r;
+      const nuevo = [...r, { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng, t }].slice(-500);
+      try {
+        sessionStorage.setItem(clave, JSON.stringify(nuevo));
+      } catch {
+        /* sin almacenamiento: el recorrido vive solo en memoria */
+      }
+      return nuevo;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marca]);
+  return recorrido;
+}
+
+// Lo que le falta al repartidor: si todavía no pasó por el comercio, primero va
+// a retirar. La distancia es en línea recta, la misma que usa la simulación.
+function viaje(pedido, recorrido) {
+  if (pedido.estado !== "ASIGNADO" || pedido.repartidor_lat == null) return null;
+  const rep = { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng };
+  const comercio = { lat: pedido.comercio_lat, lng: pedido.comercio_lng };
+  const destino = { lat: pedido.entrega_lat, lng: pedido.entrega_lng };
+  const retirado = recorrido.some((p) => distancia(p, comercio) < RADIO_RETIRO_M) || distancia(rep, comercio) < RADIO_RETIRO_M;
+  const pendiente = retirado ? [rep, destino] : [rep, comercio, destino];
+  let metros = 0;
+  for (let i = 1; i < pendiente.length; i++) metros += distancia(pendiente[i - 1], pendiente[i]);
+
+  // Velocidad medida con las posiciones del último minuto.
+  const ultimo = recorrido[recorrido.length - 1];
+  const tramo = ultimo ? recorrido.filter((p) => ultimo.t - p.t <= 60000) : [];
+  let velocidad = VELOCIDAD_DEFECTO;
+  if (tramo.length > 1) {
+    let m = 0;
+    for (let i = 1; i < tramo.length; i++) m += distancia(tramo[i - 1], tramo[i]);
+    const s = (tramo[tramo.length - 1].t - tramo[0].t) / 1000;
+    if (s > 0 && m / s > 1) velocidad = m / s;
+  }
+  return { retirado, pendiente, metros, segundos: metros / velocidad };
+}
+
 function Calificar({ pedidoId }) {
   const { app } = useSesion();
   const [puntaje, setPuntaje] = useState(0);
@@ -398,6 +457,7 @@ function Seguimiento() {
     [id]
   );
 
+  const recorrido = useRecorrido(id, pedido);
   const puntos = useMemo(() => {
     if (!pedido) return [];
     const p = [
@@ -422,6 +482,11 @@ function Seguimiento() {
       </section>
     );
 
+  const rechazado = pedido.estado === "RECHAZADO";
+  const v = viaje(pedido, recorrido);
+  const trazos = [{ puntos: recorrido, tipo: "hecho" }];
+  if (v) trazos.push({ puntos: v.pendiente, tipo: "pendiente" });
+
   const posHace = pedido.repartidor_actualizado_en
     ? Math.round((Date.now() - parseFecha(pedido.repartidor_actualizado_en)) / 1000)
     : null;
@@ -441,17 +506,31 @@ function Seguimiento() {
         <div className="aviso error">El comercio no pudo tomar este pedido: algún producto ya no está disponible.</div>
       )}
 
-      <Mapa puntos={puntos} />
-      <div className="fila-botones">
-        <Leyenda
-          items={[
-            { tipo: "comercio", texto: "Comercio" },
-            { tipo: "destino", texto: "Entrega" },
-            { tipo: "repartidor", texto: "Repartidor" },
-          ]}
-        />
-        {posHace != null && <span className="muted chico">Posición de hace {posHace} s</span>}
-      </div>
+      {v && (
+        <div className="viaje">
+          <strong>{v.retirado ? "En camino a tu dirección" : "Yendo a retirar tu pedido"}</strong>
+          <span>
+            a <span className="monto">{textoDistancia(v.metros)}</span> · llega en ~
+            <span className="monto">{textoMinutos(v.segundos)}</span>
+          </span>
+        </div>
+      )}
+
+      {!rechazado && (
+        <>
+          <Mapa puntos={puntos} trazos={trazos} />
+          <div className="fila-botones">
+            <Leyenda
+              items={[
+                { tipo: "comercio", texto: "Comercio" },
+                { tipo: "destino", texto: "Entrega" },
+                { tipo: "repartidor", texto: "Repartidor" },
+              ]}
+            />
+            {posHace != null && <span className="muted chico">Posición de hace {posHace} s</span>}
+          </div>
+        </>
+      )}
 
       {pedido.estado === "ENTREGADO" && <Calificar pedidoId={pedido.id} />}
 
@@ -470,7 +549,7 @@ function Seguimiento() {
         ))}
         <div className="comanda-fila total">
           <span>Total</span>
-          <span className="monto">{precio(pedido.total)}</span>
+          {rechazado ? <span>Sin cargo</span> : <span className="monto">{precio(pedido.total)}</span>}
         </div>
         <div className="comanda-pie">
           <Pin tam={15} /> {pedido.direccion_entrega}

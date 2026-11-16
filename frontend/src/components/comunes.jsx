@@ -84,15 +84,22 @@ function icono(tipo) {
   return ICONOS[tipo];
 }
 
+// Encuadra el mapa sin pelearse con el usuario: re-encuadra cuando aparece o
+// desaparece un tipo de punto (por ejemplo, el repartidor) o cuando algún punto
+// se sale de la vista. Si el repartidor solo se mueve dentro de lo visible, el
+// mapa queda quieto y se puede hacer zoom o arrastrar.
 function Encuadre({ puntos }) {
   const map = useMap();
-  const clave = puntos.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join("|");
-  useEffect(() => {
+  const tipos = puntos.map((p) => p.tipo).join("|");
+  const encuadrar = () => {
     if (puntos.length === 1) map.setView([puntos[0].lat, puntos[0].lng], 15);
     else if (puntos.length > 1) map.fitBounds(puntos.map((p) => [p.lat, p.lng]), { padding: [48, 48], maxZoom: 16 });
-    // Solo re-encuadra cuando cambia el conjunto de puntos (redondeado).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clave, map]);
+  };
+  useEffect(encuadrar, [tipos, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const vista = map.getBounds().pad(-0.08);
+    if (puntos.some((p) => !vista.contains([p.lat, p.lng]))) encuadrar();
+  });
   return null;
 }
 
@@ -119,9 +126,15 @@ function Punto({ punto, onArrastrar }) {
   );
 }
 
+const ESTILO_TRAZO = {
+  hecho: { color: "#2457c5", weight: 4, opacity: 0.85 },
+  pendiente: { color: "#2457c5", weight: 3, opacity: 0.7, dashArray: "2 8", lineCap: "round" },
+};
+
 // puntos: [{ lat, lng, tipo: "comercio" | "destino" | "repartidor" | "yo", etiqueta }]
+// trazos: [{ puntos: [{ lat, lng }], tipo: "hecho" | "pendiente" }]
 // onClick y onArrastrar (solo el destino) permiten elegir un punto en el mapa.
-export function Mapa({ puntos, ruta, onClick, onArrastrar, alto = 260 }) {
+export function Mapa({ puntos, ruta, trazos = [], onClick, onArrastrar, alto = 260 }) {
   const validos = puntos.filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
   const centro = validos[0] || { lat: -34.6037, lng: -58.3816 };
   return (
@@ -131,6 +144,11 @@ export function Mapa({ puntos, ruta, onClick, onArrastrar, alto = 260 }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {trazos
+          .filter((t) => t.puntos.length > 1)
+          .map((t, i) => (
+            <Polyline key={`${t.tipo}-${i}`} positions={t.puntos.map((p) => [p.lat, p.lng])} pathOptions={ESTILO_TRAZO[t.tipo]} />
+          ))}
         {ruta && <Polyline positions={ruta.map((p) => [p.lat, p.lng])} pathOptions={{ color: "#6a7080", dashArray: "6 6" }} />}
         {validos.map((p, i) => (
           <Punto key={`${p.tipo}-${i}`} punto={p} onArrastrar={onArrastrar} />
