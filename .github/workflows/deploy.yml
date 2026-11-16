@@ -107,6 +107,7 @@ jobs:
             if [[ "$ACCION" == apply ]]; then
               echo "API: $(terraform output -raw api_url)"
               echo "User Pool: $(terraform output -raw cognito_user_pool_id)"
+              echo "Dashboard: $(terraform output -raw dashboard_url)"
               echo 'La configuracion del frontend esta en el artefacto frontend-config.'
             elif [[ "$ACCION" == destroy ]]; then
               echo 'Se eliminaron los recursos del TP. Se conserva el bucket del estado.'

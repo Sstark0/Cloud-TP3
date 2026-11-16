@@ -157,6 +157,8 @@ Hay dos formas de desplegar. **No mezclarlas sobre la misma cuenta**: cada una g
    Usuarios demo: `cliente.demo@example.com` y `repartidor.demo@example.com`. Sus contraseñas no se imprimen en los logs; para leerlas, ver [Contraseñas demo](#contraseñas-demo).
 5. **Destruir.** *Run workflow* → `destroy`. Se borran todos los recursos del TP y se conserva el bucket del estado.
 
+   > El `destroy` puede tardar 20–40 min: AWS libera las interfaces de red (ENI) de las Lambdas en VPC un rato después de borrar las funciones, y recién entonces se pueden borrar las subredes y el security group. Conviene lanzarlo con al menos 45 min de sesión del Lab por delante. Si la sesión vence a mitad de camino, el estado remoto queda desactualizado y el lock puede quedar tomado: iniciar el Lab, actualizar los secrets, borrar `delivery/terraform.tfstate.tflock` del bucket si quedó, y volver a correr `destroy`. Terraform detecta lo que ya no existe y lo saca del estado.
+
 `plan` muestra los cambios sin aplicar nada.
 
 ### Opción B: desde una terminal
