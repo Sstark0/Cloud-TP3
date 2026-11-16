@@ -6,6 +6,7 @@ import { Cargando, ErrorAviso, Estado, Leyenda, Mapa, Pasos } from "../component
 import { Atras, Buscar, Chevron, Local, Mira, Pin, Recibo } from "../components/iconos";
 import { config } from "../config";
 import { buscarDireccion, direccionDe } from "../geocodificacion";
+import { largo, restoDeRuta, rutaPorCalles } from "../ruteo";
 import { distancia, fechaHora, hora, parseFecha, precio, textoDistancia, textoMinutos, usePolling, useTick } from "../util";
 
 const FINALES = ["ENTREGADO", "CANCELADO", "RECHAZADO"];
@@ -349,29 +350,52 @@ function useRecorrido(id, pedido) {
   return recorrido;
 }
 
+const DESVIO_MAX_M = 150; // si el repartidor se aparta más de la ruta, se pide una nueva
+
 // Lo que le falta al repartidor: si todavía no pasó por el comercio, primero va
-// a retirar. La distancia es en línea recta, la misma que usa la simulación.
-function viaje(pedido, recorrido) {
-  if (pedido.estado !== "ASIGNADO" || pedido.repartidor_lat == null) return null;
-  const rep = { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng };
-  const comercio = { lat: pedido.comercio_lat, lng: pedido.comercio_lng };
-  const destino = { lat: pedido.entrega_lat, lng: pedido.entrega_lng };
-  const retirado = recorrido.some((p) => distancia(p, comercio) < RADIO_RETIRO_M) || distancia(rep, comercio) < RADIO_RETIRO_M;
-  const pendiente = retirado ? [rep, destino] : [rep, comercio, destino];
-  let metros = 0;
-  for (let i = 1; i < pendiente.length; i++) metros += distancia(pendiente[i - 1], pendiente[i]);
+// a retirar. La ruta va por calles (OSRM); mientras llega, o si el servicio no
+// responde, se usa la línea recta.
+function useViaje(pedido, recorrido) {
+  const enCamino = pedido?.estado === "ASIGNADO" && pedido.repartidor_lat != null;
+  const rep = enCamino ? { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng } : null;
+  const comercio = enCamino ? { lat: pedido.comercio_lat, lng: pedido.comercio_lng } : null;
+  const destino = enCamino ? { lat: pedido.entrega_lat, lng: pedido.entrega_lng } : null;
+  const retirado =
+    enCamino && (recorrido.some((p) => distancia(p, comercio) < RADIO_RETIRO_M) || distancia(rep, comercio) < RADIO_RETIRO_M);
+  const paradas = enCamino ? (retirado ? [rep, destino] : [rep, comercio, destino]) : null;
+
+  const [recalculos, setRecalculos] = useState(0);
+  const clave = enCamino ? `${pedido.id}:${retirado}:${recalculos}` : null;
+  const [ruta, setRuta] = useState(null);
+  useEffect(() => {
+    if (!clave) return undefined;
+    let vigente = true;
+    rutaPorCalles(paradas).then((puntos) => vigente && setRuta(puntos ? { clave, puntos } : null));
+    return () => {
+      vigente = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clave]);
+
+  const resto = enCamino && ruta?.clave === clave ? restoDeRuta(ruta.puntos, rep) : null;
+  const desviado = resto != null && resto.desvio > DESVIO_MAX_M;
+  useEffect(() => {
+    if (desviado) setRecalculos((n) => n + 1);
+  }, [desviado]);
+  if (!enCamino) return null;
+
+  const pendiente = resto && !desviado ? resto.puntos : paradas;
+  const metros = largo(pendiente);
 
   // Velocidad medida con las posiciones del último minuto.
   const ultimo = recorrido[recorrido.length - 1];
   const tramo = ultimo ? recorrido.filter((p) => ultimo.t - p.t <= 60000) : [];
   let velocidad = VELOCIDAD_DEFECTO;
   if (tramo.length > 1) {
-    let m = 0;
-    for (let i = 1; i < tramo.length; i++) m += distancia(tramo[i - 1], tramo[i]);
     const s = (tramo[tramo.length - 1].t - tramo[0].t) / 1000;
-    if (s > 0 && m / s > 1) velocidad = m / s;
+    if (s > 0 && largo(tramo) / s > 1) velocidad = largo(tramo) / s;
   }
-  return { retirado, pendiente, metros, segundos: metros / velocidad };
+  return { retirado, pendiente, metros, segundos: metros / velocidad, porCalles: Boolean(resto && !desviado) };
 }
 
 function Calificar({ pedidoId }) {
@@ -458,6 +482,7 @@ function Seguimiento() {
   );
 
   const recorrido = useRecorrido(id, pedido);
+  const v = useViaje(pedido, recorrido);
   const puntos = useMemo(() => {
     if (!pedido) return [];
     const p = [
@@ -483,7 +508,6 @@ function Seguimiento() {
     );
 
   const rechazado = pedido.estado === "RECHAZADO";
-  const v = viaje(pedido, recorrido);
   const trazos = [{ puntos: recorrido, tipo: "hecho" }];
   if (v) trazos.push({ puntos: v.pendiente, tipo: "pendiente" });
 

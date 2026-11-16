@@ -141,7 +141,7 @@ export function Mapa({ puntos, ruta, trazos = [], onClick, onArrastrar, alto = 2
     <div className={`mapa ${onClick ? "elegible" : ""}`} style={{ height: alto }}>
       <MapContainer center={[centro.lat, centro.lng]} zoom={14} scrollWheelZoom={false} style={{ height: "100%" }}>
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · rutas <a href="https://project-osrm.org">OSRM</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {trazos
