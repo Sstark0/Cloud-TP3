@@ -39,7 +39,10 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = module.vpc.database_subnet_group_name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
-  multi_az               = false
+  # Multi-AZ es un hot standby administrado: replica sincronica en otra AZ y
+  # failover automatico del endpoint. Durante el failover se cortan las
+  # conexiones abiertas; db.py las descarta y reconecta.
+  multi_az = var.db_multi_az
 
   backup_retention_period = var.db_dias_backup
   skip_final_snapshot     = true
