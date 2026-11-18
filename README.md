@@ -144,6 +144,7 @@ Hay dos formas de desplegar. **No mezclarlas sobre la misma cuenta**: cada una g
 1. **Secrets.** En el Learner Lab, *Start Lab* → *AWS Details* → *AWS CLI*. Cargar los tres valores en *Settings → Secrets and variables → Actions* del repositorio:
    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`. Vencen con la sesión del Lab: actualizarlos antes de cada ejecución.
 2. **Desplegar.** *Actions* → **deploy** → *Run workflow* → `apply`. Tarda unos 15 minutos (RDS es lo más lento).
+   La casilla **`alta_disponibilidad`** elige el perfil: sin marcar, el perfil *Lab*, más barato; marcada, el perfil de *producción*, sin piezas atadas a una sola zona de disponibilidad (ver [Continuidad del negocio](#continuidad-del-negocio)).
    El workflow prepara el estado remoto, aplica el plan y corre una prueba de humo: rechazo sin token (401), login de Cognito con el usuario demo y catálogo de comercios y productos leído desde RDS.
 3. **Resultado.** El resumen de la ejecución muestra la URL del API y el User Pool. El artefacto **`frontend-config`** trae el `.env.local` del frontend (solo configuración pública).
 4. **Frontend.** Copiar `.env.local` a `frontend/` y:
@@ -275,7 +276,21 @@ La retención de backups de RDS, que tfsec marcaba en 1 día, pasó a ser la var
 
 ### Continuidad del negocio
 
-Casi toda la arquitectura ya es multi-AZ sin configurar nada: Lambda, Step Functions, API Gateway, Kinesis, SQS, SNS, Cognito y S3 son servicios regionales que AWS replica entre zonas de disponibilidad. El único componente atado a una AZ es la instancia de RDS, y ahí se concentran las decisiones:
+Casi toda la arquitectura ya es multi-AZ sin configurar nada: Lambda, Step Functions, API Gateway, Kinesis, SQS, SNS, Cognito y S3 son servicios regionales que AWS replica entre zonas de disponibilidad, y la VPC tiene subredes en dos zonas. Solo dos piezas pueden quedar atadas a una zona, y las dos son decisiones de costo con un interruptor:
+
+| Pieza | Perfil Lab (por defecto) | Perfil alta disponibilidad |
+|---|---|---|
+| RDS | Una instancia en una AZ (`db_multi_az = false`) | Standby sincrónico en otra AZ con failover automático (`db_multi_az = true`). Duplica el costo de la instancia |
+| Endpoint de Secrets Manager | Una interfaz en una AZ (`endpoint_una_az = true`). Si esa zona cae, las Lambdas de la otra no pueden leer la clave de la base | Una interfaz por AZ (`endpoint_una_az = false`) |
+
+En el workflow de deploy, la casilla `alta_disponibilidad` cambia las dos a la vez. Con Multi-AZ activo, el failover se puede provocar para demostrarlo, mientras se usa la app:
+
+```bash
+aws rds reboot-db-instance --db-instance-identifier delivery --force-failover
+```
+
+Multi-región no es parte del alcance: el compromiso del TP1 es alta disponibilidad entre zonas. Las estrategias para sobrevivir a una región completa están en la tabla siguiente.
+
 
 | Estrategia | Cómo se aplica en el TP |
 |---|---|
