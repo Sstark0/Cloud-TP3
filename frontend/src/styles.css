@@ -1290,3 +1290,58 @@ label {
     border-top-color: #aab1bd;
   }
 }
+
+/* ------------------------------------------------------------ repartidor como moto */
+.pin-moto {
+  position: relative;
+  display: block;
+  width: 46px;
+  height: 46px;
+}
+/* Halo de color (azul repartidor, verde "vos") que late, y sombra en el piso. */
+.pin-moto::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(36 87 197 / 0.18);
+  box-shadow: 0 0 0 0 rgb(36 87 197 / 0.45);
+  animation: latido 2s ease-out infinite;
+}
+.pin-moto-yo::before {
+  background: rgb(15 138 95 / 0.18);
+  box-shadow: 0 0 0 0 rgb(15 138 95 / 0.45);
+}
+.pin-moto::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  bottom: 7px;
+  width: 28px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.25);
+  filter: blur(1.5px);
+}
+.pin-moto img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 46px;
+  height: 46px;
+  transition: transform 0.3s ease;
+}
+.pin-moto.este img {
+  transform: scaleX(-1);
+}
+.leyenda i.marca-repartidor,
+.leyenda i.marca-yo {
+  width: 16px;
+  height: 16px;
+  border-radius: 0;
+  vertical-align: -3px;
+  background: url("./assets/moto.png") center / contain no-repeat;
+}
