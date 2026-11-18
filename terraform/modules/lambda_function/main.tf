@@ -39,6 +39,8 @@ resource "aws_lambda_function" "this" {
   timeout          = var.timeout
   layers           = var.layers
 
+  reserved_concurrent_executions = var.concurrencia_reservada
+
   dynamic "environment" {
     for_each = length(var.environment) > 0 ? [1] : []
     content {

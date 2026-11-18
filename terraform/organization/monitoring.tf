@@ -202,6 +202,14 @@ locals {
       ]
     },
     {
+      titulo = "Posiciones: shards del stream y escrituras rechazadas"
+      stat   = "Maximum"
+      metricas = [
+        ["${var.proyecto}/Escalado", "Shards", "StreamName", local.stream_posiciones],
+        ["AWS/Kinesis", "WriteProvisionedThroughputExceeded", "StreamName", local.stream_posiciones, { stat = "Sum", yAxis = "right" }],
+      ]
+    },
+    {
       titulo = "Posiciones: atraso de los consumidores (IteratorAge, ms)"
       stat   = "Maximum"
       metricas = [for f in [module.actualizar_posicion.function_name, module.archivar_posiciones.function_name] :

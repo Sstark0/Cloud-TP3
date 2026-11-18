@@ -55,3 +55,8 @@ output "dashboard_url" {
   description = "Dashboard de CloudWatch con la operacion del sistema."
   value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards/dashboard/${aws_cloudwatch_dashboard.operacion.dashboard_name}"
 }
+
+output "funcion_escalado" {
+  description = "Lambda que cambia los shards del stream (vacio si el escalado esta deshabilitado)."
+  value       = var.escalado.habilitado ? module.escalar_capacidad[0].function_name : ""
+}

@@ -2,7 +2,7 @@
 
 **82.08 Cloud Computing**
 
-El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
+El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
 
 ---
 
@@ -10,7 +10,7 @@ El módulo raíz de Terraform está en [`terraform/organization/`](terraform/org
 
 ### Módulo propio: `terraform/modules/lambda_function`
 
-Encapsula todo lo que necesita una Lambda del proyecto. Se usa **19 veces**: 18 en [`compute.tf`](terraform/organization/compute.tf) y 1 en [`recursos-base.tf`](terraform/organization/recursos-base.tf). Así, cada función queda declarada en unas pocas líneas.
+Encapsula todo lo que necesita una Lambda del proyecto. Se usa **20 veces**: 18 en [`compute.tf`](terraform/organization/compute.tf), 1 en [`recursos-base.tf`](terraform/organization/recursos-base.tf) y 1 en [`escalado.tf`](terraform/organization/escalado.tf). Así, cada función queda declarada en unas pocas líneas.
 
 | Recurso que crea | Para qué |
 |---|---|
@@ -28,6 +28,7 @@ Encapsula todo lo que necesita una Lambda del proyecto. Se usa **19 veces**: 18 
 | `environment` | `map(string)` | `{}` | Variables de entorno; si está vacío no se crea el bloque |
 | `vpc_config` | `object` | `null` | Subredes y security groups; `null` = la función corre fuera de la VPC |
 | `layers` | `list(string)` | `[]` | ARNs de layers; tiene una validación de hasta 5, que es el límite de Lambda |
+| `concurrencia_reservada` | `number` | `null` | Ejecuciones concurrentes reservadas; `null` = sin reserva. `escalar-capacidad` usa 1 para que dos cambios de shards no se pisen |
 
 Outputs: `function_name`, `arn` e `invoke_arn`. Los consumen API Gateway, Step Functions, los event source mappings y `aws_lambda_invocation`.
 
@@ -301,16 +302,42 @@ Multi-región no es parte del alcance: el compromiso del TP1 es alta disponibili
 
 **AWS Elastic Disaster Recovery** replica servidores (EC2 u on-premise) a nivel de bloque; esta arquitectura no tiene servidores que replicar. **AWS DMS** sirve para migrar o replicar una base de datos desde otro motor u origen; sería la herramienta para traer los datos de un sistema anterior a este RDS, no para su continuidad diaria.
 
+### Escalado según la curva de demanda
+
+El cómputo (Lambda, Step Functions, API Gateway) escala solo con la carga y baja a cero sin pedidos. El único componente con capacidad fija es el **stream de posiciones**, y es el que se escala ([`escalado.tf`](terraform/organization/escalado.tf), variable `escalado`):
+
+| Política | Cómo funciona |
+|---|---|
+| **Programada** | EventBridge Scheduler, con los cron en hora de Buenos Aires. Al empezar cada franja (almuerzo 11:30, cena 19:30) sube a `shards_pico`. Al terminar (14:30 y 23:00) baja un paso hacia `shards_minimo`, y se repite una y dos horas después, porque Kinesis solo divide a la mitad por llamada. |
+| **Reactiva** | Alarma `delivery-posiciones-escrituras-rechazadas`: si Kinesis rechaza escrituras por falta de capacidad (`WriteProvisionedThroughputExceeded`) en 2 de 3 minutos, invoca la Lambda, que duplica los shards hasta `shards_maximo`. Después de escalar, la Lambda devuelve la alarma a OK para que pueda volver a dispararse si la capacidad nueva tampoco alcanza, con **5 minutos de enfriamiento**: la ventana de la alarma todavía incluye los rechazos de antes del escalado, y sin enfriamiento duplicaría de nuevo sin necesidad. |
+| **Mínimo operativo** | Fuera de las franjas el stream vuelve a `shards_minimo` (1). |
+
+Las dos políticas pasan por la Lambda `escalar-capacidad`, que tiene **concurrencia reservada 1** para que dos cambios no se crucen. La Lambda nunca baja durante un pico (`pico` no reduce) y no hace nada si el stream ya tiene la cantidad pedida. Si el stream está cambiando de tamaño, falla para que Scheduler o la alarma reintenten. Cada cambio de shards se avisa al topic de alertas.
+
+**Límites de Kinesis que definen los valores:** cada llamada solo puede duplicar o dividir a la mitad, y se puede cambiar como mucho **10 veces por día** por stream. Por eso las validaciones exigen `shards_pico ≤ 2 × shards_minimo` y `shards_maximo ≤ 2 × shards_pico`. Con los valores por defecto (1, 2 y 4), el peor día usa 8 cambios. Si se agota el cupo, la Lambda avisa al topic de alertas en lugar de fallar.
+
+**Lo que el Learner Lab no permite:** concurrencia aprovisionada de Lambda (deny explícito) y Application Auto Scaling para Lambda (necesita un rol vinculado al servicio que no se puede crear). Por eso el escalado programado se aplica al stream y no a la concurrencia de las funciones.
+
+**Demo:**
+
+```bash
+aws lambda invoke --function-name delivery-escalar-capacidad --cli-binary-format raw-in-base64-out   --payload '{"accion":"pico"}' /dev/stdout       # simula el inicio de una franja
+./scripts/simular-pico.sh 240                     # ráfaga > 1000 registros/s: dispara la alarma
+aws lambda invoke --function-name delivery-escalar-capacidad --cli-binary-format raw-in-base64-out   --payload '{"accion":"base"}' /dev/stdout       # simula el fin de una franja
+```
+
+El dashboard muestra los shards (métrica `delivery/Escalado` → `Shards`, publicada en formato EMF desde los logs) junto a las escrituras rechazadas.
+
 ### Costos
 
 - **AWS Budgets** (`presupuesto_mensual_usd`, 50 USD): presupuesto mensual con dos avisos al topic de alertas: cuando el pronóstico del mes supera el 80 % y cuando el gasto real supera el 100 %. Es por cuenta y no por tags porque en el Learner Lab la cuenta es exclusiva del TP, y el filtro por tags exige activar las *cost allocation tags* en Billing, que el Lab no permite.
 - **Etiquetado:** `default_tags` del provider etiqueta todos los recursos con el proyecto. Es la base para separar costos con Cost Explorer en una cuenta compartida.
-- **Decisiones de diseño por costo:** sin NAT Gateway (los servicios se alcanzan por endpoints de VPC o desde Lambdas fuera de la VPC), `db.t3.micro`, un shard de Kinesis, lifecycle del histórico a Standard-IA y Glacier IR, y todo el cómputo serverless: si no hay pedidos, casi no hay costo.
+- **Decisiones de diseño por costo:** sin NAT Gateway (los servicios se alcanzan por endpoints de VPC o desde Lambdas fuera de la VPC), `db.t3.micro`, un shard de Kinesis fuera de las franjas de pico (un segundo shard durante unas 6 h por día cuesta unos 0,09 USD), lifecycle del histórico a Standard-IA y Glacier IR, y todo el cómputo serverless: si no hay pedidos, casi no hay costo.
 
 ### Monitoreo
 
-- **Dashboard** `delivery-operacion` (output `dashboard_url`): en una sola pantalla, los pedidos (ejecuciones de las dos state machines), la API (pedidos, errores 4xx/5xx y latencia p90), los errores y throttles de todas las Lambdas, el ingreso a Kinesis y el atraso de sus consumidores, conexiones y CPU de RDS, y las colas de fallidos.
-- **Alarmas** al topic `alertas`: mensajes en las colas de fallidos, ejecuciones fallidas de cada workflow y el presupuesto.
+- **Dashboard** `delivery-operacion` (output `dashboard_url`): en una sola pantalla, los pedidos (ejecuciones de las dos state machines), la API (pedidos, errores 4xx/5xx y latencia p90), los errores y throttles de todas las Lambdas, el ingreso a Kinesis, sus shards y escrituras rechazadas, el atraso de sus consumidores, conexiones y CPU de RDS, y las colas de fallidos.
+- **Alarmas** al topic `alertas`: mensajes en las colas de fallidos, ejecuciones fallidas de cada workflow, cada cambio de shards del stream (lo avisa la Lambda de escalado) y el presupuesto. La alarma de escrituras rechazadas no avisa por email: dispara el escalado y se rearma cada minuto mientras dura un pico.
 - **CloudTrail:** el historial de eventos de los últimos 90 días está activo por defecto en toda cuenta y alcanza para auditar quién creó o cambió qué. No se crea un trail propio porque necesitaría otro bucket S3, que en este Lab hay que crear fuera del provider (ver [sección 4](#4-lambda-recursos-base)).
 
 ### Gobernanza en producción
@@ -333,6 +360,6 @@ La cuenta del Learner Lab es administrada por AWS Academy, así que estos servic
 | **Excelencia operativa** | Infraestructura como código, despliegue desde el pipeline con prueba de humo, dashboard, alarmas, logs con retención definida. |
 | **Seguridad** | Cognito con grupos por rol y autorizador JWT, base en subred privada sin acceso público, credenciales en Secrets Manager por endpoint privado, TLS obligatorio en S3, cifrado en reposo, tfsec en cada PR con las excepciones justificadas. |
 | **Fiabilidad** | Reintentos con backoff y colas de fallidos, idempotencia (`crear-pedido`, nombre de ejecución por pedido), restricciones en la base que impiden estados inválidos (un pedido asignado por repartidor), reconexión a RDS, Multi-AZ y dos capas de backup. |
-| **Eficiencia de rendimiento** | Serverless con escalado automático, búsqueda de repartidores cercanos con índice GiST de PostGIS y elección según cuándo llega cada uno frente al tiempo de preparación del comercio, Kinesis para absorber el volumen de posiciones sin presionar la base. |
+| **Eficiencia de rendimiento** | Serverless con escalado automático, stream de posiciones con escalado programado por franjas y reactivo por alarma, búsqueda de repartidores cercanos con índice GiST de PostGIS y elección según cuándo llega cada uno frente al tiempo de preparación del comercio, Kinesis para absorber el volumen de posiciones sin presionar la base. |
 | **Optimización de costos** | Pago por uso, sin NAT Gateway, instancias mínimas, lifecycle del histórico, presupuesto con alertas. |
 | **Sostenibilidad** | Sin servidores ociosos: los recursos de cómputo solo consumen mientras hay pedidos. |

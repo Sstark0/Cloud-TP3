@@ -20,7 +20,7 @@ resource "aws_lambda_invocation" "recursos_base" {
   input = jsonencode({
     bucket  = "${var.proyecto}-archivos-${random_id.bucket.hex}"
     stream  = "${var.proyecto}-posiciones"
-    shards  = 1
+    shards  = var.escalado.shards_minimo
     kms_key = "alias/aws/kinesis"
     tags    = data.aws_default_tags.actual.tags
   })

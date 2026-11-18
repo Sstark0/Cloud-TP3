@@ -33,6 +33,19 @@ historico_lifecycle = {
   dias_expiracion  = 180
 }
 
+# Escalado del stream: programado por franjas (hora local) + reactivo por alarma
+escalado = {
+  habilitado    = true
+  zona_horaria  = "America/Argentina/Buenos_Aires"
+  shards_minimo = 1
+  shards_pico   = 2 # como mucho 2 * shards_minimo
+  shards_maximo = 4 # como mucho 2 * shards_pico
+  franjas = {
+    almuerzo = { inicio = "cron(30 11 * * ? *)", fin = "cron(30 14-16 * * ? *)" }
+    cena     = { inicio = "cron(30 19 * * ? *)", fin = "cron(0 23,0,1 * * ? *)" }
+  }
+}
+
 # Asignacion de repartidores
 asignacion_max_intentos     = 3
 asignacion_radio_metros     = 5000

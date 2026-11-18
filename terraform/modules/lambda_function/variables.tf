@@ -37,3 +37,14 @@ variable "layers" {
     error_message = "Lambda admite hasta 5 layers por funcion."
   }
 }
+
+variable "concurrencia_reservada" {
+  description = "Ejecuciones concurrentes reservadas. null = sin reserva (usa la concurrencia libre de la cuenta)."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.concurrencia_reservada == null ? true : var.concurrencia_reservada >= 0
+    error_message = "La concurrencia reservada no puede ser negativa."
+  }
+}

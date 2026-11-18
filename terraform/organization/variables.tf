@@ -218,3 +218,66 @@ variable "usuarios_demo" {
     error_message = "El grupo tiene que ser cliente o repartidor."
   }
 }
+
+variable "escalado" {
+  description = <<-EOT
+    Escalado del stream de posiciones. Cada franja tiene un cron de inicio (sube a
+    shards_pico) y uno de fin (baja un paso hacia shards_minimo; conviene que se
+    dispare varias veces, porque Kinesis solo divide a la mitad por llamada).
+    Los cron se interpretan en zona_horaria. La alarma de escrituras rechazadas
+    duplica los shards hasta shards_maximo.
+  EOT
+  type = object({
+    habilitado    = bool
+    zona_horaria  = string
+    shards_minimo = number
+    shards_pico   = number
+    shards_maximo = number
+    franjas = map(object({
+      inicio = string
+      fin    = string
+    }))
+  })
+  default = {
+    habilitado    = true
+    zona_horaria  = "America/Argentina/Buenos_Aires"
+    shards_minimo = 1
+    shards_pico   = 2
+    shards_maximo = 4
+    franjas = {
+      almuerzo = {
+        inicio = "cron(30 11 * * ? *)"
+        fin    = "cron(30 14-16 * * ? *)" # 14:30, 15:30 y 16:30
+      }
+      cena = {
+        inicio = "cron(30 19 * * ? *)"
+        fin    = "cron(0 23,0,1 * * ? *)" # 23:00, 00:00 y 01:00
+      }
+    }
+  }
+
+  validation {
+    condition = (
+      var.escalado.shards_minimo >= 1 &&
+      var.escalado.shards_minimo <= var.escalado.shards_pico &&
+      var.escalado.shards_pico <= var.escalado.shards_maximo
+    )
+    error_message = "Los shards van en orden: 1 <= shards_minimo <= shards_pico <= shards_maximo."
+  }
+
+  validation {
+    condition     = var.escalado.shards_pico <= 2 * var.escalado.shards_minimo
+    error_message = "Kinesis solo duplica por llamada: shards_pico no puede superar 2 * shards_minimo."
+  }
+
+  validation {
+    condition     = var.escalado.shards_maximo <= 2 * var.escalado.shards_pico
+    error_message = "shards_maximo no puede superar 2 * shards_pico: con mas pasos se agota el cupo de 10 cambios diarios de Kinesis."
+  }
+
+  validation {
+    condition = alltrue(flatten([for f in values(var.escalado.franjas) :
+    [startswith(f.inicio, "cron("), startswith(f.fin, "cron(")]]))
+    error_message = "Los horarios tienen el formato de AWS: cron(min hora dia mes dia-semana anio)."
+  }
+}
