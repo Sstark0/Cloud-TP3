@@ -282,3 +282,14 @@ variable "escalado" {
     error_message = "Los horarios tienen el formato de AWS: cron(min hora dia mes dia-semana anio)."
   }
 }
+
+variable "athena_limite_escaneo_mb" {
+  description = "Tope de datos que puede escanear una consulta del workgroup de Athena (MB). Control de costo: Athena cobra por dato leido."
+  type        = number
+  default     = 1024
+
+  validation {
+    condition     = var.athena_limite_escaneo_mb >= 10
+    error_message = "Athena exige un tope de al menos 10 MB."
+  }
+}

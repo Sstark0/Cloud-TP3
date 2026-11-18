@@ -2,7 +2,7 @@
 
 **82.08 Cloud Computing**
 
-El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
+El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `analitica`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
 
 ---
 
@@ -10,7 +10,7 @@ El módulo raíz de Terraform está en [`terraform/organization/`](terraform/org
 
 ### Módulo propio: `terraform/modules/lambda_function`
 
-Encapsula todo lo que necesita una Lambda del proyecto. Se usa **20 veces**: 18 en [`compute.tf`](terraform/organization/compute.tf), 1 en [`recursos-base.tf`](terraform/organization/recursos-base.tf) y 1 en [`escalado.tf`](terraform/organization/escalado.tf). Así, cada función queda declarada en unas pocas líneas.
+Encapsula todo lo que necesita una Lambda del proyecto. Se usa **21 veces**: 18 en [`compute.tf`](terraform/organization/compute.tf), 1 en [`recursos-base.tf`](terraform/organization/recursos-base.tf), 1 en [`escalado.tf`](terraform/organization/escalado.tf) y 1 en [`analitica.tf`](terraform/organization/analitica.tf). Así, cada función queda declarada en unas pocas líneas.
 
 | Recurso que crea | Para qué |
 |---|---|
@@ -336,6 +336,35 @@ aws lambda invoke --function-name delivery-escalar-capacidad --cli-binary-format
 ```
 
 El dashboard muestra los shards (métrica `delivery/Escalado` → `Shards`, publicada en formato EMF desde los logs) junto a las escrituras rechazadas.
+
+### Historial y panel analítico
+
+Los eventos de posición y del ciclo de vida de los pedidos se archivan de forma continua en S3, y se analizan con SQL desde Athena ([`analitica.tf`](terraform/organization/analitica.tf)).
+
+| Capa | Cómo |
+|---|---|
+| **Posiciones** | Kinesis → `archivar-posiciones` → `historico/posiciones/fecha=AAAA-MM-DD/`, en lotes. |
+| **Eventos de pedidos** | Cada cambio de estado ya se publica en el topic `estado_pedido`. Una cola SQS suscrita los junta y `archivar-eventos` los completa con comercio, repartidor, total y punto de entrega (lee RDS, por eso corre en la VPC) y los escribe en `historico/pedidos/fecha=AAAA-MM-DD/`. Los mensajes que fallan 5 veces van a `eventos-fallidos`, con alarma. |
+| **Catálogo** | Base `delivery_analitica` de Glue con las tablas `posiciones` y `eventos_pedido`. Usan *partition projection*: Athena deduce las particiones del nombre de la carpeta, sin crawler de Glue (que necesitaría un rol propio y cobra por ejecución). |
+| **Consultas** | Workgroup `delivery-analitica`, con resultados en `athena/` del mismo bucket (se borran a los 7 días) y un tope de datos escaneados por consulta (`athena_limite_escaneo_mb`, 1 GB): Athena cobra por dato leído, y una consulta mal escrita no puede recorrer todo el histórico. |
+
+**Panel.** Las consultas guardadas del workgroup, en [`consultas/`](terraform/organization/consultas/):
+
+| Consulta | Qué responde |
+|---|---|
+| `tiempos_entrega` | Minutos hasta asignar y hasta entregar, por comercio y hora del pedido |
+| `curva_demanda` | Pedidos por día de la semana y hora: la curva que justifica las franjas del escalado |
+| `cobertura` | Repartidores por celda de ~500 m y hora: dónde hay flota y dónde falta |
+| `desempeno_repartidores` | Entregas, minutos medios de entrega y km recorridos por repartidor |
+| `rechazos_cancelaciones` | Pedidos rechazados y cancelados por comercio |
+
+Para usarlo: abrir Athena (output `athena_url`), elegir el workgroup **`delivery-analitica`**, pestaña *Saved queries*, y correr la consulta. Los eventos llegan a S3 con hasta un minuto de demora (`archivo_ventana_segundos`).
+
+**Decisiones:**
+- El lifecycle pasa `historico/` a **Glacier Instant Retrieval**, que Athena puede leer directamente; Glacier Flexible Retrieval o Deep Archive dejarían lo más viejo afuera de las consultas.
+- El endpoint de S3 de la VPC es de solo lectura salvo `historico/pedidos/`, el único prefijo donde escribe una Lambda de la VPC.
+- Los datos se guardan como JSON, simple de escribir y de leer. En producción convendría convertirlos a Parquet (por ejemplo con Firehose o un `CREATE TABLE AS` diario): columnar y comprimido, Athena escanea mucho menos y la consulta cuesta menos.
+- En un despliegue real el panel sería QuickSight sobre estas mismas tablas; en el Learner Lab no está disponible.
 
 ### Costos
 

@@ -114,6 +114,18 @@ data "aws_iam_policy_document" "vpce_s3" {
       identifiers = ["*"]
     }
   }
+
+  # archivar-eventos (dentro de la VPC) escribe el historico de pedidos. Desde
+  # la VPC solo se puede escribir ahi: el resto del bucket sigue de solo lectura.
+  statement {
+    actions   = ["s3:PutObject"]
+    resources = ["${local.bucket_archivos_arn}/historico/pedidos/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
 }
 
 resource "aws_vpc_endpoint" "s3" {

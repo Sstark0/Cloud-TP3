@@ -20,6 +20,7 @@ locals {
   colas_con_alarma = {
     pedidos-dlq         = aws_sqs_queue.pedidos_dlq.name
     posiciones-fallidas = aws_sqs_queue.posiciones_fallidas.name
+    eventos-fallidos    = aws_sqs_queue.eventos_fallidos.name
   }
 
   workflows = {

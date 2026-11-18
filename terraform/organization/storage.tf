@@ -55,6 +55,24 @@ resource "aws_s3_bucket_lifecycle_configuration" "archivos" {
     }
   }
 
+  # Resultados de Athena: son descartables (se regeneran corriendo la consulta).
+  rule {
+    id     = "resultados-athena"
+    status = "Enabled"
+
+    filter {
+      prefix = "athena/"
+    }
+
+    expiration {
+      days = 7
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+
   rule {
     id     = "multipart-incompletos"
     status = "Enabled"

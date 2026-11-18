@@ -46,6 +46,9 @@ escalado = {
   }
 }
 
+# Panel analitico: tope de datos escaneados por consulta de Athena
+athena_limite_escaneo_mb = 1024
+
 # Asignacion de repartidores
 asignacion_max_intentos     = 3
 asignacion_radio_metros     = 5000
