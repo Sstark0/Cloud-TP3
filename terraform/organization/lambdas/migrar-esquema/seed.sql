@@ -10,7 +10,7 @@ WHERE NOT EXISTS (SELECT 1 FROM comercio c WHERE c.nombre = v.nombre);
 
 UPDATE comercio c SET tiempo_preparacion_min = v.minutos
 FROM (VALUES
-    ('Pizzeria Demo Centro',   15),
+    ('Pizzeria Demo Centro',   10),
     ('Sushi Demo Palermo',     25),
     ('Parrilla Demo Belgrano', 30)
 ) AS v(nombre, minutos)

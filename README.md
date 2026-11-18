@@ -232,6 +232,15 @@ terraform output -json usuarios_demo
 
 `override.tf` está en `.gitignore`. No copiar las contraseñas en issues, PR ni logs.
 
+### Demo de la asignación por tiempo de preparación
+
+La asignación no elige al repartidor más cercano: elige por el momento en que el pedido puede salir del comercio, `max(llegada del repartidor, comida lista)`. Si varios llegan a tiempo, gana el que llega más justo, para que no espere en la puerta. Con dos repartidores se ven los dos casos:
+
+1. Abrir la app del repartidor dos veces, en ventanas que no compartan sesión (una normal y otra de incógnito), con `repartidor.demo@example.com` y `repartidor2.demo@example.com`. A uno ponerle la zona **Pizzeria Demo Centro** y al otro **Sushi Demo Palermo**, ambos en *Simular recorrido* y disponibles. Quedan a ~4 km entre sí.
+2. **Pedido a la pizzería** (prepara en 10 min): el de la zona Sushi tardaría ~12 min en llegar y el pedido saldría tarde. Gana el que está al lado.
+3. **Pedido al sushi** (prepara en 25 min): los dos llegan a tiempo. Gana el de la pizzería, que llega a los ~12 min; el que está al lado esperaría 25 min en la puerta y queda libre para otro pedido.
+4. **Ver el porqué:** Step Functions → `delivery-procesar-pedido` → la ejecución del pedido → paso `BuscarRepartidor` → *Output* → `candidato.evaluados`. La lista muestra, para cada candidato, cuándo llega (`llegada_s`), cuándo está lista la comida (`listo_s`) y cuándo saldría el pedido (`sale_en_s`). Lo mismo queda en los logs de `delivery-buscar-repartidor`.
+
 ---
 
 ## 6. Pipelines de GitHub Actions

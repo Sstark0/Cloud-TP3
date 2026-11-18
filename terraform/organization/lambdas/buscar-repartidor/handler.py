@@ -1,3 +1,4 @@
+import json
 import os
 
 import db
@@ -58,12 +59,16 @@ def handler(event, context):
         " llegada_s::int AS llegada_s, listo_s::int AS listo_s"
         " FROM candidato"
         " ORDER BY GREATEST(llegada_s, listo_s), llegada_s DESC"
-        " LIMIT 1",
+        " LIMIT 5",
         pedido=pedido_id,
         radio=RADIO_METROS,
         velocidad=VELOCIDAD_MS,
     )
     if not candidatos:
         raise SinCandidatos("no hay repartidores disponibles cerca")
-    return candidatos[0]
-    
+    # La decision queda a la vista: en el historial de la ejecucion de Step
+    # Functions (salida de BuscarRepartidor) y en los logs de la Lambda.
+    for c in candidatos:
+        c["sale_en_s"] = max(c["llegada_s"], c["listo_s"])
+    print(json.dumps({"pedido_id": pedido_id, "evaluados": candidatos}))
+    return {**candidatos[0], "evaluados": candidatos}

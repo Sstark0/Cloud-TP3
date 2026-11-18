@@ -209,8 +209,9 @@ variable "usuarios_demo" {
   description = "Usuarios de prueba (email => grupo) que se crean ya confirmados y con contrasena permanente."
   type        = map(string)
   default = {
-    "cliente.demo@example.com"    = "cliente"
-    "repartidor.demo@example.com" = "repartidor"
+    "cliente.demo@example.com"     = "cliente"
+    "repartidor.demo@example.com"  = "repartidor"
+    "repartidor2.demo@example.com" = "repartidor"
   }
 
   validation {

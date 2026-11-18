@@ -46,6 +46,7 @@ alerta_email = ""
 cors_origenes = ["http://localhost:5173"]
 
 usuarios_demo = {
-  "cliente.demo@example.com"    = "cliente"
-  "repartidor.demo@example.com" = "repartidor"
+  "cliente.demo@example.com"     = "cliente"
+  "repartidor.demo@example.com"  = "repartidor"
+  "repartidor2.demo@example.com" = "repartidor"
 }

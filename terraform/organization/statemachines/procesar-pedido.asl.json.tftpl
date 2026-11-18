@@ -41,7 +41,7 @@
         "FunctionName": "${buscar_repartidor_arn}",
         "Payload": { "pedido_id.$": "$.pedido_id" }
       },
-      "ResultSelector": { "repartidor_id.$": "$.Payload.repartidor_id" },
+      "ResultSelector": { "repartidor_id.$": "$.Payload.repartidor_id", "evaluados.$": "$.Payload.evaluados" },
       "ResultPath": "$.candidato",
       "Retry": [
         {
