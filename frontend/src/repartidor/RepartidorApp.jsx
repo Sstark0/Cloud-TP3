@@ -10,7 +10,8 @@ import { avanzar, rutaPorCalles } from "../ruteo";
 const SIM_TICK_MS = 5000; // cada cuánto se mueve y se envía la posición simulada
 const SIM_PASO_M = 90; // metros por tick (~65 km/h: rápido a propósito para la demo)
 const GPS_ENVIO_MS = 10000; // con GPS real, como mucho un envío cada 10 s
-const CONFIRMACION_MAX_MS = 90000; // si la entrega no se confirma en este tiempo, se deja reintentar
+const CONFIRMACION_MAX_MS = 90000;
+const REINTENTO_RUTA_MS = 30000; // si OSRM no respondió, se vuelve a pedir la ruta pasado este tiempo // si la entrega no se confirma en este tiempo, se deja reintentar
 
 function mover(desde, hacia, metros) {
   const d = distancia(desde, hacia);
@@ -244,7 +245,7 @@ export default function RepartidorApp() {
   const [confirmando, setConfirmando] = useState(() => new Map()); // pedido_id -> inicio de la confirmación
   const [aviso, setAviso] = useState(null);
   const fases = useRef({}); // pedido_id -> "retiro" | "entrega" (solo para la simulación)
-  // "pedido_id:fase" -> { puntos, i } con la ruta por calles, "pidiendo" o "recta" si OSRM no respondió
+  // tramo -> { puntos, i } con la ruta por calles, "pidiendo", o { recta, reintentar } si OSRM no respondió
   const trayectos = useRef({});
   const [rutaRestante, setRutaRestante] = useState(null);
   useTick(5000);
@@ -339,8 +340,33 @@ export default function RepartidorApp() {
   const actual = useRef({});
   actual.current = { posicion, pedido, zona, emitiendo };
 
-  // Simulación: arranca a ~1 km del comercio elegido y se acerca; con un pedido va al comercio y después al destino,
-  // por calles (ruta de OSRM) o en línea recta si el servicio de rutas no respondió.
+  // Un paso de la simulación hacia `objetivo`, por la ruta por calles del tramo `clave`. La ruta se pide una vez
+  // por tramo; mientras llega, el repartidor espera. Si OSRM no responde, avanza en línea recta y reintenta luego.
+  const paso = (clave, desde, objetivo) => {
+    let tr = trayectos.current[clave];
+    if (tr?.recta && Date.now() > tr.reintentar) {
+      delete trayectos.current[clave];
+      tr = undefined;
+    }
+    if (tr === undefined) {
+      trayectos.current[clave] = "pidiendo";
+      rutaPorCalles([desde, objetivo]).then((puntos) => {
+        trayectos.current[clave] = puntos ? { puntos, i: 1 } : { recta: true, reintentar: Date.now() + REINTENTO_RUTA_MS };
+      });
+      return { pos: desde, llego: false, restante: null };
+    }
+    if (tr === "pidiendo") return { pos: desde, llego: false, restante: null };
+    if (tr.recta) {
+      const pos = mover(desde, objetivo, SIM_PASO_M);
+      return { pos, llego: distancia(pos, objetivo) < 1, restante: null };
+    }
+    const a = avanzar(tr.puntos, desde, tr.i, SIM_PASO_M);
+    tr.i = a.i;
+    return { pos: a.pos, llego: a.llego, restante: [a.pos, ...tr.puntos.slice(tr.i)] };
+  };
+
+  // Simulación: arranca a ~1 km del comercio elegido y se acerca; con un pedido va al comercio y después al destino.
+  // Todo por calles (ruta de OSRM), o en línea recta mientras el servicio de rutas no responda.
   useEffect(() => {
     if (modo !== "simulada") return undefined;
     const tick = () => {
@@ -351,28 +377,13 @@ export default function RepartidorApp() {
       if (p) {
         const fase = fases.current[p.id] || "retiro";
         const objetivo = fase === "entrega" ? { lat: p.entrega_lat, lng: p.entrega_lng } : { lat: p.comercio_lat, lng: p.comercio_lng };
-        const clave = `${p.id}:${fase}`;
-        const tr = trayectos.current[clave];
-        let llego = false;
-        if (tr === undefined) {
-          // Se pide la ruta una vez por tramo; mientras llega, el repartidor espera este tick.
-          trayectos.current[clave] = "pidiendo";
-          rutaPorCalles([siguiente, objetivo]).then((puntos) => {
-            trayectos.current[clave] = puntos ? { puntos, i: 1 } : "recta";
-          });
-        } else if (tr === "recta") {
-          siguiente = mover(siguiente, objetivo, SIM_PASO_M);
-          llego = distancia(siguiente, objetivo) < 1;
-        } else if (tr !== "pidiendo") {
-          const a = avanzar(tr.puntos, siguiente, tr.i, SIM_PASO_M);
-          siguiente = a.pos;
-          tr.i = a.i;
-          llego = a.llego;
-          restante = [siguiente, ...tr.puntos.slice(tr.i)];
-        }
-        if (llego && fase === "retiro") fases.current[p.id] = "entrega";
+        const r = paso(`${p.id}:${fase}`, siguiente, objetivo);
+        siguiente = r.pos;
+        restante = r.restante;
+        if (r.llego && fase === "retiro") fases.current[p.id] = "entrega";
       } else if (distancia(siguiente, z) > 150) {
-        siguiente = mover(siguiente, z, SIM_PASO_M);
+        // Sin pedido, se acerca a su zona (también por calles) y se queda a unos 150 m.
+        siguiente = paso(`zona:${z.id}`, siguiente, z).pos;
       }
       setRutaRestante(restante);
       setPosicion(siguiente);
