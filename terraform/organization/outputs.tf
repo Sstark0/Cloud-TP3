@@ -60,3 +60,13 @@ output "funcion_escalado" {
   description = "Lambda que cambia los shards del stream (vacio si el escalado esta deshabilitado)."
   value       = var.escalado.habilitado ? module.escalar_capacidad[0].function_name : ""
 }
+
+output "athena_workgroup" {
+  description = "Workgroup de Athena con las consultas guardadas del panel analitico."
+  value       = aws_athena_workgroup.analitica.name
+}
+
+output "athena_url" {
+  description = "Editor de Athena (elegir el workgroup y abrir 'Saved queries')."
+  value       = "https://${var.region}.console.aws.amazon.com/athena/home?region=${var.region}#/query-editor"
+}
