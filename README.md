@@ -2,6 +2,10 @@
 
 **82.08 Cloud Computing**
 
+![Arquitectura en AWS](docs/arquitectura.png)
+
+Diagrama editable: [`arquitectura-aws.drawio`](arquitectura-aws.drawio) (se abre con [draw.io](https://app.diagrams.net)). Los colores de las flechas siguen la leyenda: pedido y asignación, posición del repartidor, entrega y comprobante, historial y analítica, y acceso y red.
+
 El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `analitica`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
 
 ---
