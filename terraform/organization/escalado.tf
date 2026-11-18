@@ -107,6 +107,65 @@ resource "aws_cloudwatch_metric_alarm" "escrituras_rechazadas" {
   alarm_actions = [module.escalar_capacidad[0].arn]
 }
 
+# ------------------------------------------------------- techo de capacidad
+
+# Avisa cuando el ingreso se acerca a lo que soportan shards_maximo shards,
+# sin importar cuantos haya abiertos en este momento: es el aviso de que el
+# escalado reactivo se esta quedando sin margen. Compara contra los dos limites
+# de escritura por shard (1000 registros/s y 1 MiB/s) y se queda con el mayor.
+#
+# No usa WriteProvisionedThroughputExceeded: esa metrica tambien sube con 1 o 2
+# shards, cuando el escalado reactivo todavia tiene margen, y avisaria de mas.
+# El caso "ya en el maximo y con rechazos" (por ejemplo, un shard caliente que
+# el promedio no muestra) lo avisa la Lambda de escalado.
+locals {
+  capacidad_maxima_registros_s = 1000 * var.escalado.shards_maximo
+  capacidad_maxima_bytes_s     = 1048576 * var.escalado.shards_maximo
+}
+
+resource "aws_cloudwatch_metric_alarm" "capacidad_maxima" {
+  count = local.escalado
+
+  alarm_name          = "${var.proyecto}-posiciones-capacidad-maxima"
+  alarm_description   = "El ingreso a ${local.stream_posiciones} supera el 80 % de lo que soportan ${var.escalado.shards_maximo} shards (shards_maximo): el escalado ya no tiene margen."
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 80
+  evaluation_periods  = 5
+  datapoints_to_alarm = 3
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alertas.arn]
+  ok_actions          = [aws_sns_topic.alertas.arn]
+
+  metric_query {
+    id = "registros"
+    metric {
+      namespace   = "AWS/Kinesis"
+      metric_name = "IncomingRecords"
+      dimensions  = { StreamName = local.stream_posiciones }
+      period      = 60
+      stat        = "Sum"
+    }
+  }
+
+  metric_query {
+    id = "bytes"
+    metric {
+      namespace   = "AWS/Kinesis"
+      metric_name = "IncomingBytes"
+      dimensions  = { StreamName = local.stream_posiciones }
+      period      = 60
+      stat        = "Sum"
+    }
+  }
+
+  metric_query {
+    id          = "uso"
+    label       = "Uso de la capacidad de shards_maximo (%)"
+    return_data = true
+    expression  = "100 * MAX([registros / 60 / ${local.capacidad_maxima_registros_s}, bytes / 60 / ${local.capacidad_maxima_bytes_s}])"
+  }
+}
+
 resource "aws_lambda_permission" "alarma_escalado" {
   count = local.escalado
 
