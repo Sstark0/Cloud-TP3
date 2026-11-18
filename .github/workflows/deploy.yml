@@ -50,6 +50,9 @@ jobs:
       # piezas en una sola AZ. Con la casilla: ninguna pieza depende de una AZ.
       TF_VAR_db_multi_az: ${{ inputs.alta_disponibilidad }}
       TF_VAR_endpoint_una_az: ${{ !inputs.alta_disponibilidad }}
+      # Destino de las alertas del topic (alarmas, escalado, presupuesto). Si el
+      # secret no existe llega vacio y no se crea la suscripcion.
+      TF_VAR_alerta_email: ${{ secrets.ALERTA_EMAIL }}
 
     defaults:
       run:

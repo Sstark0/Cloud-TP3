@@ -82,6 +82,17 @@ def handler(event, context):
             if origen == "alarma":
                 _rearmar_alarma(int(time.time()), f"escalado a {objetivo} shards")
 
+    elif accion == "subir" and actual >= MAXIMO:
+        # La alarma pide mas capacidad pero ya no hay a donde crecer. No se
+        # rearma la alarma: queda en ALARM y este aviso sale una vez por
+        # episodio (vuelve a salir si la alarma pasa por OK y se dispara otra vez).
+        resultado["en_maximo"] = True
+        _avisar(
+            f"{STREAM} ya tiene shards_maximo ({MAXIMO} shards) y Kinesis sigue "
+            "rechazando escrituras: la capacidad maxima no alcanza. Revisar si "
+            "hay que subir shards_maximo o si hay un shard caliente (partition key)."
+        )
+
     _metrica(resultado["despues"], cambio=resultado["despues"] - actual)
     log.info(json.dumps(resultado))
     return resultado
