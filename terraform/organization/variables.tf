@@ -149,6 +149,17 @@ variable "asignacion_radio_metros" {
   default = 5000
 }
 
+variable "asignacion_velocidad_kmh" {
+  description = "Velocidad media del repartidor en ciudad, para estimar cuando llega al comercio y compararlo con el tiempo de preparacion."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.asignacion_velocidad_kmh >= 5 && var.asignacion_velocidad_kmh <= 80
+    error_message = "asignacion_velocidad_kmh tiene que estar entre 5 y 80."
+  }
+}
+
 variable "asignacion_timeout_segundos" {
   type    = number
   default = 60

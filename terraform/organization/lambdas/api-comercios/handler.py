@@ -7,7 +7,7 @@ def handler(event, context):
 
     if ruta == "GET /comercios":
         comercios = db.consultar(
-            "SELECT id, nombre, direccion,"
+            "SELECT id, nombre, direccion, tiempo_preparacion_min,"
             " ST_Y(ubicacion::geometry) AS lat, ST_X(ubicacion::geometry) AS lng"
             " FROM comercio ORDER BY nombre"
         )

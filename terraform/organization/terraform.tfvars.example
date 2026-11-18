@@ -36,6 +36,7 @@ historico_lifecycle = {
 # Asignacion de repartidores
 asignacion_max_intentos     = 3
 asignacion_radio_metros     = 5000
+asignacion_velocidad_kmh    = 20   # para comparar la llegada con el tiempo de preparacion
 asignacion_timeout_segundos = 60
 
 # Alarmas: vacio = sin suscripcion por email

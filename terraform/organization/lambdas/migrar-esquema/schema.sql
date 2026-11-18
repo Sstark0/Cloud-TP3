@@ -105,3 +105,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS pedido_un_asignado
 ALTER TABLE pedido DROP CONSTRAINT IF EXISTS pedido_estado_check;
 ALTER TABLE pedido ADD CONSTRAINT pedido_estado_check
     CHECK (estado IN ('CREADO', 'ASIGNADO', 'ENTREGADO', 'CANCELADO', 'RECHAZADO'));
+-- Minutos que tarda el comercio en tener listo un pedido. La asignacion lo usa
+-- para que el repartidor llegue cuando la comida esta lista, y no antes.
+ALTER TABLE comercio ADD COLUMN IF NOT EXISTS tiempo_preparacion_min integer NOT NULL DEFAULT 15;
+ALTER TABLE comercio DROP CONSTRAINT IF EXISTS comercio_tiempo_preparacion_check;
+ALTER TABLE comercio ADD CONSTRAINT comercio_tiempo_preparacion_check
+    CHECK (tiempo_preparacion_min BETWEEN 0 AND 120);

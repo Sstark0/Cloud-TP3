@@ -47,7 +47,10 @@ function Comercios() {
             </span>
             <span className="crece">
               <strong>{c.nombre}</strong>
-              <span className="muted chico bloque">{c.direccion}</span>
+              <span className="muted chico bloque">
+                {c.direccion}
+                {c.tiempo_preparacion_min != null && ` · prepara en ~${c.tiempo_preparacion_min} min`}
+              </span>
             </span>
             <Chevron tam={18} className="muted" />
           </Link>
