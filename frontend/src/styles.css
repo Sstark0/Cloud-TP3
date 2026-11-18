@@ -1345,3 +1345,19 @@ label {
   vertical-align: -3px;
   background: url("./assets/moto.png") center / contain no-repeat;
 }
+
+/* ------------------------------------------------------------ por qué te tocó la oferta */
+.por-que {
+  margin: 0.2rem 0 0.8rem;
+  padding: 0.55rem 0.75rem;
+  border-left: 3px solid #0f8a5f;
+  border-radius: 6px;
+  background: color-mix(in srgb, #0f8a5f 9%, transparent);
+  font-size: 0.9rem;
+}
+.por-que p {
+  margin: 0 0 0.2rem;
+}
+.por-que strong {
+  white-space: nowrap;
+}

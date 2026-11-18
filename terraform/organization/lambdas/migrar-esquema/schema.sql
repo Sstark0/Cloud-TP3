@@ -111,3 +111,8 @@ ALTER TABLE comercio ADD COLUMN IF NOT EXISTS tiempo_preparacion_min integer NOT
 ALTER TABLE comercio DROP CONSTRAINT IF EXISTS comercio_tiempo_preparacion_check;
 ALTER TABLE comercio ADD CONSTRAINT comercio_tiempo_preparacion_check
     CHECK (tiempo_preparacion_min BETWEEN 0 AND 120);
+
+-- Por que se eligio a este repartidor: cuando llegaba al comercio y cuando
+-- estaba lista la comida, en segundos desde que se hizo la oferta.
+ALTER TABLE asignacion ADD COLUMN IF NOT EXISTS llegada_s integer;
+ALTER TABLE asignacion ADD COLUMN IF NOT EXISTS listo_s integer;

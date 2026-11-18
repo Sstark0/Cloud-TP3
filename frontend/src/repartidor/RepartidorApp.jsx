@@ -121,6 +121,33 @@ function TarjetaPosicion({ modo, setModo, posicion, ultimoEnvio, errorEnvio, emi
 }
 
 // ---------------------------------------------------------------- ofertas
+// Por qué le tocó este pedido: la asignación compara cuándo llega al comercio con
+// cuándo está lista la comida (estimación a velocidad urbana, no la de la simulación).
+function PorQue({ oferta }) {
+  if (oferta.llegada_s == null || oferta.listo_s == null) return null;
+  const min = (s) => Math.max(1, Math.round(s / 60));
+  const aTiempo = oferta.llegada_s <= oferta.listo_s;
+  return (
+    <div className="por-que">
+      <p>
+        {oferta.listo_s < 60 ? (
+          <>El pedido ya está listo</>
+        ) : (
+          <>
+            El pedido está listo en <strong>~{min(oferta.listo_s)} min</strong>
+          </>
+        )}{" "}
+        y llegás en <strong>~{min(oferta.llegada_s)} min</strong>.
+      </p>
+      <span className="muted chico">
+        {aTiempo
+          ? "Llegás a tiempo sin esperar de más: por eso te lo ofrecimos a vos."
+          : "Nadie llega antes de que esté listo, y vos sos quien llega primero."}
+      </span>
+    </div>
+  );
+}
+
 function Oferta({ oferta, onResponder }) {
   useTick(1000);
   const [enviando, setEnviando] = useState(false);
@@ -151,6 +178,7 @@ function Oferta({ oferta, onResponder }) {
         </div>
       )}
       <p className="monto fuerte grande">{precio(oferta.total)}</p>
+      <PorQue oferta={oferta} />
       <ol className="paradas">
         <li className="parada-retiro">
           <span className="muted chico bloque">Retirás en</span>

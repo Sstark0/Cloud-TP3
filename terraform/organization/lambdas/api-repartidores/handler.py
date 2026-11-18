@@ -29,7 +29,9 @@ def handler(event, context):
         pendientes = db.consultar(
             "SELECT a.id, a.pedido_id, a.task_token, a.creado_en,"
             " c.nombre AS comercio, c.direccion AS direccion_comercio,"
-            " p.direccion_entrega, p.total"
+            " p.direccion_entrega, p.total, a.llegada_s,"
+            # Lo que falta de preparacion, descontando lo que paso desde la oferta.
+            " GREATEST(0, a.listo_s - EXTRACT(EPOCH FROM now() - a.creado_en))::int AS listo_s"
             " FROM asignacion a"
             " JOIN pedido p ON p.id = a.pedido_id"
             " JOIN comercio c ON c.id = p.comercio_id"
