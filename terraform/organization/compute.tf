@@ -177,8 +177,9 @@ module "buscar_repartidor" {
   vpc_config = local.vpc_lambda
 
   environment = merge(local.entorno_db, {
-    MAX_INTENTOS = tostring(var.asignacion_max_intentos)
-    RADIO_METROS = tostring(var.asignacion_radio_metros)
+    MAX_INTENTOS  = tostring(var.asignacion_max_intentos)
+    RADIO_METROS  = tostring(var.asignacion_radio_metros)
+    VELOCIDAD_KMH = tostring(var.asignacion_velocidad_kmh)
   })
 }
 

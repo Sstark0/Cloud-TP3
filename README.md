@@ -318,6 +318,6 @@ La cuenta del Learner Lab es administrada por AWS Academy, así que estos servic
 | **Excelencia operativa** | Infraestructura como código, despliegue desde el pipeline con prueba de humo, dashboard, alarmas, logs con retención definida. |
 | **Seguridad** | Cognito con grupos por rol y autorizador JWT, base en subred privada sin acceso público, credenciales en Secrets Manager por endpoint privado, TLS obligatorio en S3, cifrado en reposo, tfsec en cada PR con las excepciones justificadas. |
 | **Fiabilidad** | Reintentos con backoff y colas de fallidos, idempotencia (`crear-pedido`, nombre de ejecución por pedido), restricciones en la base que impiden estados inválidos (un pedido asignado por repartidor), reconexión a RDS, Multi-AZ y dos capas de backup. |
-| **Eficiencia de rendimiento** | Serverless con escalado automático, búsqueda del repartidor más cercano con índice GiST de PostGIS, Kinesis para absorber el volumen de posiciones sin presionar la base. |
+| **Eficiencia de rendimiento** | Serverless con escalado automático, búsqueda de repartidores cercanos con índice GiST de PostGIS y elección según cuándo llega cada uno frente al tiempo de preparación del comercio, Kinesis para absorber el volumen de posiciones sin presionar la base. |
 | **Optimización de costos** | Pago por uso, sin NAT Gateway, instancias mínimas, lifecycle del histórico, presupuesto con alertas. |
 | **Sostenibilidad** | Sin servidores ociosos: los recursos de cómputo solo consumen mientras hay pedidos. |

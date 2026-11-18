@@ -8,6 +8,14 @@ FROM (VALUES
 ) AS v(nombre, direccion, lng, lat)
 WHERE NOT EXISTS (SELECT 1 FROM comercio c WHERE c.nombre = v.nombre);
 
+UPDATE comercio c SET tiempo_preparacion_min = v.minutos
+FROM (VALUES
+    ('Pizzeria Demo Centro',   15),
+    ('Sushi Demo Palermo',     25),
+    ('Parrilla Demo Belgrano', 30)
+) AS v(nombre, minutos)
+WHERE c.nombre = v.nombre;
+
 INSERT INTO producto (comercio_id, nombre, precio)
 SELECT c.id, p.nombre, p.precio
 FROM (VALUES
