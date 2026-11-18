@@ -84,18 +84,20 @@ done
 
 echo "   esperando a los consumidores..."
 sleep 20
+# filter-log-events pagina solo y --query imprime un resultado por pagina: se suman.
+sumar() { awk '{s += $1} END {print s + 0}'; }
 eventos=$(aws logs filter-log-events --log-group-name "/aws/apigateway/${PROYECTO}" --start-time "$DESDE" \
-  --query 'length(events)' --output text)
+  --query 'length(events)' --output text | sumar)
 [[ "$eventos" -ge 5 ]] && ok "$eventos lineas en el access log del API" || mal "access log del API con $eventos lineas"
 
 # Se mira el log de la Lambda (no un mensaje propio del handler) para que el
 # chequeo no dependa de como este escrita: invocaciones vs. errores.
 LOG_ACT="/aws/lambda/${PROYECTO}-actualizar-posicion"
 invocaciones=$(aws logs filter-log-events --log-group-name "$LOG_ACT" --start-time "$DESDE" \
-  --filter-pattern '"REPORT RequestId"' --query 'length(events)' --output text)
+  --filter-pattern '"REPORT RequestId"' --query 'length(events)' --output text | sumar)
 errores=$(aws logs filter-log-events --log-group-name "$LOG_ACT" --start-time "$DESDE" \
-  --filter-pattern '"[ERROR]"' --query 'events[0].message' --output text)
-if [[ "$invocaciones" -ge 1 && "$errores" == None ]]; then
+  --filter-pattern '"[ERROR]"' --query 'events[].message' --output text | head -1)
+if [[ "$invocaciones" -ge 1 && -z "$errores" ]]; then
   ok "actualizar-posicion: $invocaciones invocaciones sin errores"
 else
   mal "actualizar-posicion: $invocaciones invocaciones, primer error: $errores"
@@ -110,7 +112,7 @@ fi
 
 echo "   S3 (archivar-posiciones escribe cada archivo_ventana_segundos; por defecto 5 s sin el PR de consumidores, 60 s con el)"
 objetos=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix historico/posiciones/ --query 'KeyCount' --output text)
-[[ "$objetos" -ge 1 ]] && ok "$objetos objetos en s3://$BUCKET/historico/posiciones/" \
+[[ "$objetos" =~ ^[0-9]+$ && "$objetos" -ge 1 ]] && ok "$objetos objetos en s3://$BUCKET/historico/posiciones/" \
   || echo "  ...  todavia sin objetos: reintentar con 'aws s3 ls s3://$BUCKET/historico/posiciones/ --recursive' en unos minutos"
 
 # Misma llamada firmada, por HTTP y por HTTPS: la policy tiene que cortar solo la primera.
@@ -120,6 +122,34 @@ else
   ok "S3 rechaza llamadas sin TLS"
 fi
 aws s3api list-objects-v2 --bucket "$BUCKET" --max-items 1 >/dev/null 2>&1 && ok "S3 acepta la misma llamada por HTTPS" || mal "S3 rechazo la llamada por HTTPS"
+
+echo "6. Escalado del stream (programado y reactivo)"
+FUNCION=$(out funcion_escalado)
+STREAM=$(out stream_posiciones)
+if [[ -z "$FUNCION" ]]; then
+  echo "  ...  escalado deshabilitado (escalado.habilitado = false)"
+else
+  schedules=$(aws scheduler list-schedules --group-name "${PROYECTO}-escalado" --query 'length(Schedules[?State==`ENABLED`])' --output text)
+  [[ "$schedules" -ge 2 ]] && ok "$schedules schedules habilitados en ${PROYECTO}-escalado" || mal "faltan schedules ($schedules)"
+  acciones=$(aws cloudwatch describe-alarms --alarm-names "${PROYECTO}-posiciones-escrituras-rechazadas"     --query 'MetricAlarms[0].AlarmActions' --output text)
+  [[ "$acciones" == *":function:${FUNCION}"* ]] && ok "la alarma de escrituras rechazadas invoca $FUNCION" || mal "la alarma no invoca $FUNCION"
+
+  # Cada cambio de shards consume 1 de los 10 cambios diarios del stream.
+  # VERIFICAR_ESCALADO=0 saltea la prueba de subir y bajar.
+  if [[ "${VERIFICAR_ESCALADO:-1}" == 1 ]]; then
+    shards() { aws kinesis describe-stream-summary --stream-name "$STREAM"       --query 'StreamDescriptionSummary.[StreamStatus,OpenShardCount]' --output text; }
+    esperar_activo() { for _ in $(seq 60); do [[ "$(shards)" == ACTIVE* ]] && return; sleep 5; done; }
+    invocar() { aws lambda invoke --function-name "$FUNCION" --cli-binary-format raw-in-base64-out       --payload "{\"accion\":\"$1\",\"origen\":\"verificar-apply\"}" "$TMP_ESC" >/dev/null && cat "$TMP_ESC"; }
+    TMP_ESC=$(mktemp)
+    esperar_activo
+    inicial=$(shards | awk '{print $2}')
+    r=$(invocar pico); esperar_activo; despues=$(shards | awk '{print $2}')
+    [[ "$despues" -gt "$inicial" || "$r" == *'"antes": '"$despues"* ]] && ok "pico: $inicial -> $despues shards" || mal "pico no subio los shards: $r"
+    r=$(invocar base); esperar_activo; final=$(shards | awk '{print $2}')
+    [[ "$final" -lt "$despues" || "$final" == "$inicial" ]] && ok "base: $despues -> $final shards" || mal "base no bajo los shards: $r"
+    rm -f "$TMP_ESC"
+  fi
+fi
 
 echo
 [[ $FALLAS -eq 0 ]] && echo "Todo OK" || echo "$FALLAS verificaciones fallaron"
