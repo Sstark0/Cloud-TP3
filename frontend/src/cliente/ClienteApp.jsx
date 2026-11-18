@@ -358,17 +358,8 @@ const DESVIO_MAX_M = 150; // si el repartidor se aparta más de la ruta, se pide
 // Lo que le falta al repartidor: si todavía no pasó por el comercio, primero va
 // a retirar. La ruta va por calles (OSRM); mientras llega, o si el servicio no
 // responde, se usa la línea recta.
-function useViaje(pedido, recorrido) {
-  const enCamino = pedido?.estado === "ASIGNADO" && pedido.repartidor_lat != null;
-  const rep = enCamino ? { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng } : null;
-  const comercio = enCamino ? { lat: pedido.comercio_lat, lng: pedido.comercio_lng } : null;
-  const destino = enCamino ? { lat: pedido.entrega_lat, lng: pedido.entrega_lng } : null;
-  const retirado =
-    enCamino && (recorrido.some((p) => distancia(p, comercio) < RADIO_RETIRO_M) || distancia(rep, comercio) < RADIO_RETIRO_M);
-  const paradas = enCamino ? (retirado ? [rep, destino] : [rep, comercio, destino]) : null;
-
-  const [recalculos, setRecalculos] = useState(0);
-  const clave = enCamino ? `${pedido.id}:${retirado}:${recalculos}` : null;
+// Ruta por calles entre `paradas`, pedida una vez por `clave` (null = no hace falta).
+function useRuta(paradas, clave) {
   const [ruta, setRuta] = useState(null);
   useEffect(() => {
     if (!clave) return undefined;
@@ -379,15 +370,39 @@ function useViaje(pedido, recorrido) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave]);
+  return clave && ruta?.clave === clave ? ruta.puntos : null;
+}
 
-  const resto = enCamino && ruta?.clave === clave ? restoDeRuta(ruta.puntos, rep) : null;
+function useViaje(pedido, recorrido) {
+  const enCamino = pedido?.estado === "ASIGNADO" && pedido.repartidor_lat != null;
+  const rep = enCamino ? { lat: pedido.repartidor_lat, lng: pedido.repartidor_lng } : null;
+  const comercio = enCamino ? { lat: pedido.comercio_lat, lng: pedido.comercio_lng } : null;
+  const destino = enCamino ? { lat: pedido.entrega_lat, lng: pedido.entrega_lng } : null;
+  const retirado =
+    enCamino && (recorrido.some((p) => distancia(p, comercio) < RADIO_RETIRO_M) || distancia(rep, comercio) < RADIO_RETIRO_M);
+
+  // Dos tramos con rutas separadas. Si fuera una sola ruta repartidor -> comercio
+  // -> entrega, cuando el repartidor esta entre el comercio y el cliente la ruta
+  // pasa dos veces por las mismas calles, y ubicarlo sobre ella podia elegir el
+  // tramo de la vuelta: la distancia crecia mientras iba a retirar.
+  // - Tramo actual: donde esta el repartidor hasta su proxima parada. Es el
+  //   unico sobre el que se lo ubica, y se recalcula si se aparta.
+  // - Tramo siguiente (solo antes de retirar): comercio -> entrega, completo.
+  const [recalculos, setRecalculos] = useState(0);
+  const proxima = retirado ? destino : comercio;
+  const rutaActual = useRuta(enCamino ? [rep, proxima] : null, enCamino ? `${pedido.id}:${retirado}:${recalculos}` : null);
+  const rutaSiguiente = useRuta(enCamino && !retirado ? [comercio, destino] : null, enCamino && !retirado ? `${pedido.id}:entrega` : null);
+
+  const resto = enCamino && rutaActual ? restoDeRuta(rutaActual, rep) : null;
   const desviado = resto != null && resto.desvio > DESVIO_MAX_M;
   useEffect(() => {
     if (desviado) setRecalculos((n) => n + 1);
   }, [desviado]);
   if (!enCamino) return null;
 
-  const pendiente = resto && !desviado ? resto.puntos : paradas;
+  const actual = resto && !desviado ? resto.puntos : [rep, proxima];
+  const siguiente = retirado ? [] : rutaSiguiente || [comercio, destino];
+  const pendiente = [...actual, ...siguiente.slice(1)];
   const metros = largo(pendiente);
 
   // Velocidad medida con las posiciones del último minuto.
