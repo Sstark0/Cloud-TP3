@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import { Check, Cruz } from "./iconos";
+import moto from "../assets/moto.png";
 
 const ETIQUETAS = {
   RECIBIDO: "Recibido",
@@ -69,19 +70,37 @@ export function Pasos({ estado }) {
 }
 
 // ------------------------------------------------------------ mapa
+// El repartidor (y "yo" en la app del repartidor) se dibuja como una moto, que
+// mira hacia donde avanza: la imagen original mira a la izquierda (oeste).
 const ICONOS = {};
-function icono(tipo) {
-  if (!ICONOS[tipo]) {
+function icono(tipo, haciaElEste = false) {
+  const clave = `${tipo}-${haciaElEste}`;
+  if (!ICONOS[clave]) {
     const movil = tipo === "repartidor" || tipo === "yo";
-    ICONOS[tipo] = L.divIcon({
+    ICONOS[clave] = L.divIcon({
       className: "",
-      html: movil ? `<span class="pin-movil pin-${tipo}"></span>` : `<span class="pin pin-${tipo}"><i></i></span>`,
-      iconSize: movil ? [22, 22] : [28, 36],
-      iconAnchor: movil ? [11, 11] : [14, 34],
-      tooltipAnchor: movil ? [12, 0] : [14, -22],
+      html: movil
+        ? `<span class="pin-moto pin-moto-${tipo}${haciaElEste ? " este" : ""}"><img src="${moto}" alt="" /></span>`
+        : `<span class="pin pin-${tipo}"><i></i></span>`,
+      iconSize: movil ? [46, 46] : [28, 36],
+      iconAnchor: movil ? [23, 30] : [14, 34],
+      tooltipAnchor: movil ? [20, -8] : [14, -22],
     });
   }
-  return ICONOS[tipo];
+  return ICONOS[clave];
+}
+
+// Recuerda hacia dónde se movió el punto la última vez (este u oeste). Si se
+// queda quieto o va en línea recta al norte o al sur, conserva la orientación.
+function useHaciaElEste(punto) {
+  const previo = useRef(null);
+  const [este, setEste] = useState(false);
+  useEffect(() => {
+    const p = previo.current;
+    if (p && Math.abs(punto.lng - p.lng) > 1e-5) setEste(punto.lng > p.lng);
+    previo.current = { lat: punto.lat, lng: punto.lng };
+  }, [punto.lat, punto.lng]);
+  return este;
 }
 
 // Puntos que se mueven solos: el mapa los sigue mientras el usuario no lo toque.
@@ -123,6 +142,7 @@ function Clicks({ onClick }) {
 }
 
 function Punto({ punto, onArrastrar }) {
+  const haciaElEste = useHaciaElEste(punto);
   const arrastrable = Boolean(onArrastrar) && punto.tipo === "destino";
   const eventos = useMemo(
     () => ({
@@ -134,7 +154,7 @@ function Punto({ punto, onArrastrar }) {
     [onArrastrar]
   );
   return (
-    <Marker position={[punto.lat, punto.lng]} icon={icono(punto.tipo)} draggable={arrastrable} eventHandlers={eventos}>
+    <Marker position={[punto.lat, punto.lng]} icon={icono(punto.tipo, haciaElEste)} draggable={arrastrable} eventHandlers={eventos}>
       {punto.etiqueta && <Tooltip>{punto.etiqueta}</Tooltip>}
     </Marker>
   );
