@@ -18,6 +18,11 @@ on:
           - plan
           - apply
           - destroy
+      alta_disponibilidad:
+        description: "Perfil de produccion: RDS Multi-AZ y endpoint de Secrets Manager en todas las AZ (mas caro y unos minutos mas lento)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -41,6 +46,10 @@ jobs:
       AWS_PAGER: ""
       TF_IN_AUTOMATION: "true"
       ACCION: ${{ inputs.accion }}
+      # Perfil del despliegue. Sin la casilla: perfil Lab (barato), con dos
+      # piezas en una sola AZ. Con la casilla: ninguna pieza depende de una AZ.
+      TF_VAR_db_multi_az: ${{ inputs.alta_disponibilidad }}
+      TF_VAR_endpoint_una_az: ${{ !inputs.alta_disponibilidad }}
 
     defaults:
       run:
@@ -103,6 +112,11 @@ jobs:
           {
             echo '## deploy'
             echo "Operacion: $ACCION. Region: $AWS_REGION."
+            if [[ "$TF_VAR_db_multi_az" == true ]]; then
+              echo 'Perfil: alta disponibilidad (RDS Multi-AZ, endpoint de Secrets Manager en todas las AZ).'
+            else
+              echo 'Perfil: Lab (RDS y endpoint de Secrets Manager en una sola AZ).'
+            fi
             echo "Estado privado: s3://$STATE_BUCKET/delivery/terraform.tfstate"
             if [[ "$ACCION" == apply ]]; then
               echo "API: $(terraform output -raw api_url)"

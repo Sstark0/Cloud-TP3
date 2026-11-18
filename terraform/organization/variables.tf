@@ -129,8 +129,9 @@ variable "presupuesto_mensual_usd" {
 }
 
 variable "endpoint_una_az" {
-  type    = bool
-  default = true
+  description = "Endpoint de Secrets Manager en una sola AZ (mas barato). En false hay una interfaz por AZ y las Lambdas de la VPC no dependen de una sola zona para leer la clave de la base."
+  type        = bool
+  default     = true
 }
 
 variable "asignacion_max_intentos" {
