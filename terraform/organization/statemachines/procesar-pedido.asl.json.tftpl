@@ -41,7 +41,12 @@
         "FunctionName": "${buscar_repartidor_arn}",
         "Payload": { "pedido_id.$": "$.pedido_id" }
       },
-      "ResultSelector": { "repartidor_id.$": "$.Payload.repartidor_id", "evaluados.$": "$.Payload.evaluados" },
+      "ResultSelector": {
+        "repartidor_id.$": "$.Payload.repartidor_id",
+        "llegada_s.$": "$.Payload.llegada_s",
+        "listo_s.$": "$.Payload.listo_s",
+        "evaluados.$": "$.Payload.evaluados"
+      },
       "ResultPath": "$.candidato",
       "Retry": [
         {
@@ -66,6 +71,8 @@
         "Payload": {
           "pedido_id.$": "$.pedido_id",
           "repartidor_id.$": "$.candidato.repartidor_id",
+          "llegada_s.$": "$.candidato.llegada_s",
+          "listo_s.$": "$.candidato.listo_s",
           "task_token.$": "$$.Task.Token"
         }
       },
