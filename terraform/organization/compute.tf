@@ -1,7 +1,12 @@
 locals {
-  capas_db   = [aws_lambda_layer_version.codigo["db"].arn, aws_lambda_layer_version.rds_ca.arn]
-  capa_api   = aws_lambda_layer_version.codigo["api"].arn
-  entorno_db = { DB_SECRET_ARN = aws_secretsmanager_secret.db.arn }
+  capas_db = [aws_lambda_layer_version.codigo["db"].arn, aws_lambda_layer_version.rds_ca.arn]
+  capa_api = aws_lambda_layer_version.codigo["api"].arn
+  # Usuario y clave salen del secreto; el host es el del proxy, no el de la
+  # instancia (que solo acepta conexiones desde el proxy).
+  entorno_db = {
+    DB_SECRET_ARN = aws_secretsmanager_secret.db.arn
+    DB_HOST       = aws_db_proxy.main.endpoint
+  }
   vpc_lambda = {
     subnet_ids         = module.vpc.private_subnets
     security_group_ids = [aws_security_group.lambda.id]
@@ -60,7 +65,7 @@ module "migrar_esquema" {
   nombre     = "${var.proyecto}-migrar-esquema"
   source_dir = "${path.module}/lambdas/migrar-esquema"
   role_arn   = data.aws_iam_role.lab.arn
-  timeout    = 60
+  timeout    = 300
   layers     = local.capas_db
   vpc_config = local.vpc_lambda
 
@@ -162,7 +167,7 @@ module "archivar_posiciones" {
   timeout    = 30
 
   environment = {
-    BUCKET = local.bucket_archivos
+    BUCKET = local.bucket_historico
   }
 }
 
@@ -234,7 +239,7 @@ module "url_comprobante" {
   layers     = [local.capa_api]
 
   environment = {
-    BUCKET = local.bucket_archivos
+    BUCKET = local.bucket_comprobantes
   }
 }
 
@@ -249,7 +254,7 @@ module "marcar_entregado" {
   vpc_config = local.vpc_lambda
 
   environment = merge(local.entorno_db, {
-    BUCKET = local.bucket_archivos
+    BUCKET = local.bucket_comprobantes
   })
 }
 
@@ -283,12 +288,18 @@ resource "aws_lambda_invocation" "migrar_esquema" {
     seed   = var.cargar_datos_demo ? filesha256("${path.module}/lambdas/migrar-esquema/seed.sql") : "sin-seed"
   }
 
+  # El target del proxy tarda unos minutos en quedar disponible despues de
+  # registrarse; la migracion reintenta la conexion mientras tanto.
   depends_on = [
-    aws_db_instance.main,
+    aws_db_proxy_target.main,
     aws_secretsmanager_secret_version.db,
     aws_vpc_endpoint.secretsmanager,
-    aws_vpc_security_group_egress_rule.lambda_a_rds,
-    aws_vpc_security_group_ingress_rule.rds_desde_lambda,
+    aws_vpc_security_group_egress_rule.lambda_a_proxy,
+    aws_vpc_security_group_ingress_rule.proxy_desde_lambda,
+    aws_vpc_security_group_egress_rule.proxy_a_rds,
+    aws_vpc_security_group_ingress_rule.rds_desde_proxy,
+    aws_vpc_security_group_egress_rule.proxy_a_vpce,
+    aws_vpc_security_group_ingress_rule.vpce_desde_proxy,
     aws_vpc_security_group_egress_rule.lambda_a_vpce,
     aws_vpc_security_group_ingress_rule.vpce_desde_lambda,
   ]

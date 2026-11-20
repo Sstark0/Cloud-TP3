@@ -6,7 +6,7 @@
 
 Diagrama editable: [`arquitectura-aws.drawio`](arquitectura-aws.drawio) (se abre con [draw.io](https://app.diagrams.net)). Los colores de las flechas siguen la leyenda: pedido y asignación, posición del repartidor, entrega y comprobante, historial y analítica, y acceso y red.
 
-El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database`, `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `analitica`, `storage`, `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
+El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database` (RDS y RDS Proxy), `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `analitica`, `storage`, `frontend` (Amplify Hosting), `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
 
 ---
 
@@ -38,7 +38,9 @@ Outputs: `function_name`, `arn` e `invoke_arn`. Los consumen API Gateway, Step F
 
 ### Módulo externo: `terraform-aws-modules/vpc/aws` (`~> 6.7`)
 
-Está en [`network.tf`](terraform/organization/network.tf) y crea la VPC con 2 AZ y dos niveles de subredes privadas. Las subredes `app` alojan las Lambdas que acceden a RDS y las subredes `datos` alojan RDS, con su propio subnet group y una NACL dedicada. Las reglas de la NACL se generan con una expresión `for` sobre las subredes `app`: solo permiten tráfico entrante al 5432 y la respuesta por puertos efímeros. No hay Internet Gateway ni NAT (`create_igw = false`, `enable_nat_gateway = false`). Las Lambdas de la VPC llegan a Secrets Manager y a S3 por VPC endpoints.
+Está en [`network.tf`](terraform/organization/network.tf) y crea la VPC con 2 AZ y dos niveles de subredes privadas. Las subredes `app` alojan las Lambdas que acceden a RDS y el RDS Proxy; las subredes `datos` alojan RDS, con su propio subnet group y una NACL dedicada. Las reglas de la NACL se generan con una expresión `for` sobre las subredes `app`: solo permiten tráfico entrante al 5432 y la respuesta por puertos efímeros. No hay Internet Gateway ni NAT (`create_igw = false`, `enable_nat_gateway = false`). Las Lambdas de la VPC llegan a Secrets Manager y a S3 por VPC endpoints.
+
+Los security groups encadenan **Lambda → RDS Proxy → RDS**: las Lambdas solo pueden abrir el 5432 hacia el proxy, y la instancia solo acepta el 5432 desde el proxy. Ninguna Lambda se conecta directo a la base.
 
 ---
 
@@ -50,11 +52,11 @@ Está en [`network.tf`](terraform/organization/network.tf) y crea la VPC con 2 A
 | `jsondecode` | `recursos-base.tf`, `outputs.tf` | Leer la respuesta de `recursos-base` y de `migrar-esquema` |
 | `templatefile` | `orchestration.tf` | Generar las definiciones ASL de las dos state machines a partir de `statemachines/*.tftpl` |
 | `merge` | `compute.tf` | Sumar variables propias a `local.entorno_db`, que comparten todas las Lambdas que usan RDS |
-| `concat` | `compute.tf` | Combinar las layers de base de datos con la layer de API |
+| `concat` / `distinct` | `compute.tf`, `frontend.tf` | Combinar las layers de base de datos con la layer de API; sumar la URL del frontend en Amplify a los orígenes CORS de `cors_origenes`, sin repetidos |
 | `cidrsubnet` | `locals.tf` | Calcular las subredes /24 `app` (10.0.10+i) y `datos` (10.0.20+i) a partir de `vpc_cidr` |
 | `slice` | `locals.tf` | Tomar las 2 primeras AZ disponibles |
 | `range` / `length` | `locals.tf` | Generar una subred por AZ |
-| `toset` | `locals.tf`, `compute.tf` | Roles de Cognito y layers como conjuntos para `for_each` |
+| `toset` | `locals.tf`, `compute.tf`, `storage.tf` | Roles de Cognito, layers y buckets como conjuntos para `for_each` |
 | `values` | `api.tf`, `variables.tf` | Audiencias del autorizador JWT (IDs de los App Clients); validar los grupos de `usuarios_demo` |
 | `replace` | `database.tf` | Nombre de la base derivado de `proyecto` (los guiones pasan a `_`) |
 | `tostring` | `compute.tf` | Pasar números y booleanos como variables de entorno |
@@ -74,6 +76,7 @@ Está en [`network.tf`](terraform/organization/network.tf) y crea la VPC con 2 A
 | `auth.tf` | `local.roles` (un App Client y un grupo de Cognito por app) y `var.usuarios_demo` (contraseña, usuario y pertenencia a grupo por cada usuario de prueba) |
 | `api.tf` | `local.lambdas_api` (integración y permiso de invocación por Lambda) y `local.rutas` (una ruta del API por entrada) |
 | `compute.tf` | Las layers `db` y `api` (zip + `aws_lambda_layer_version`) |
+| `storage.tf` | Los dos buckets, `comprobantes` e `historico`: bloqueo de acceso público, versionado, cifrado y policy de solo TLS. Las claves son fijas para que `for_each` se conozca en el `plan`; los nombres llegan de `recursos-base`. El lifecycle del histórico genera una regla por tabla con un bloque `dynamic` sobre `local.tablas_analitica` |
 | `streaming.tf` | `local.consumidores_posiciones`: los dos consumidores del stream, cada uno con su posición inicial, tamaño de lote, ventana y edad máxima |
 | `monitoring.tf` | `local.colas_con_alarma` y `local.workflows` (una alarma por cola y por state machine) |
 | Módulo `lambda_function` | Bloques `dynamic` de `environment` y `vpc_config`, que solo se generan si se pasaron |
@@ -88,7 +91,8 @@ Se usa para las dependencias que Terraform no puede inferir de las referencias:
 
 | Dónde | Por qué |
 |---|---|
-| `compute.tf` (`migrar_esquema`) | La migración necesita RDS, el secreto, el endpoint de Secrets Manager y las reglas de security group ya creadas |
+| `compute.tf` (`migrar_esquema`) | La migración necesita la instancia registrada en el RDS Proxy, el secreto, el endpoint de Secrets Manager y las reglas de security group ya creadas |
+| `database.tf` (`aws_db_proxy`) | El proxy lee el secreto al crearse: necesita su versión con usuario y clave |
 | `streaming.tf` | Kinesis no invoca a `actualizar-posicion` hasta que exista la tabla que escribe, es decir, hasta que corrió la migración |
 | `storage.tf` | El lifecycle de S3 necesita el versionado activo; la bucket policy va después del public access block |
 | Módulo `lambda_function` | La función se crea después de su log group (vía `time_sleep`) |
@@ -97,7 +101,7 @@ Se usa para las dependencias que Terraform no puede inferir de las referencias:
 
 | Dónde | Regla | Por qué |
 |---|---|---|
-| `network.tf`, `database.tf` | `create_before_destroy` en los security groups | Reemplazar un SG sin dejar sin reglas a los recursos que lo usan |
+| `network.tf`, `database.tf` | `create_before_destroy` en los security groups (Lambda, endpoints, RDS Proxy y RDS) | Reemplazar un SG sin dejar sin reglas a los recursos que lo usan |
 | `database.tf` | `precondition` | RDS necesita al menos 2 subredes de datos |
 | `compute.tf` (`data.http.rds_ca`) | `postcondition` | Falla temprano si no se pudo descargar el bundle de CA de RDS |
 | `recursos-base.tf` | `lifecycle_scope = "CRUD"` (argumento de `aws_lambda_invocation`) | La invocación corre en create, update y **destroy** |
@@ -113,23 +117,28 @@ El Learner Lab tiene un SCP (Service Control Policy de AWS Academy) que niega do
 | `aws_s3_bucket` | `s3:GetBucketObjectLockConfiguration`, en cada lectura del bucket. Después del primer apply, todo `plan` falla |
 | `aws_kinesis_stream` | `kinesis:IncreaseStreamRetentionPeriod`, al crear el stream. El stream queda a medias y sin cifrado |
 
-Por eso el bucket `archivos` y el stream `posiciones` no se declaran como recursos de Terraform. Los crea una Lambda, [`lambdas/recursos-base/handler.py`](terraform/organization/lambdas/recursos-base/handler.py), que solo hace las llamadas permitidas. Terraform la invoca como un *custom resource*:
+Por eso los buckets `comprobantes` e `historico` y el stream `posiciones` no se declaran como recursos de Terraform. Los crea una Lambda, [`lambdas/recursos-base/handler.py`](terraform/organization/lambdas/recursos-base/handler.py), que solo hace las llamadas permitidas. Terraform la invoca como un *custom resource*:
 
 ```hcl
 resource "aws_lambda_invocation" "recursos_base" {
   function_name   = module.recursos_base.function_name
   lifecycle_scope = "CRUD"
-  input = jsonencode({ bucket = ..., stream = ..., shards = 1, kms_key = "alias/aws/kinesis", tags = ... })
+  input = jsonencode({
+    buckets = { comprobantes = "delivery-comprobantes-<sufijo>", historico = "delivery-historico-<sufijo>" }
+    stream  = ..., shards = 1, kms_key = "alias/aws/kinesis", tags = ...
+  })
 }
 ```
 
 | Acción de Terraform | Qué hace la Lambda |
 |---|---|
-| **create** | Crea el stream (1 shard, `PROVISIONED`, cifrado KMS) y el bucket. Si ya existen, no falla. Las etiquetas (`default_tags` del provider) las aplica si el Lab lo permite |
-| **update** | Si cambió el nombre del bucket o del stream, borra el anterior y crea el nuevo |
-| **delete** | Vacía el bucket (todas las versiones y delete markers) y lo borra; borra el stream |
+| **create** | Crea el stream (1 shard, `PROVISIONED`, cifrado KMS) y cada bucket del mapa. Si ya existen, no falla. Las etiquetas (`default_tags` del provider) las aplica si el Lab lo permite |
+| **update** | Si cambió el nombre del stream o un bucket salió del mapa, borra el anterior; crea lo que falte |
+| **delete** | Vacía cada bucket (todas las versiones y delete markers) y lo borra; borra el stream |
 
-La Lambda devuelve los nombres y ARNs. [`recursos-base.tf`](terraform/organization/recursos-base.tf) los expone como `local.bucket_archivos`, `local.bucket_archivos_arn`, `local.stream_posiciones` y `local.stream_posiciones_arn`. El resto del código usa esos locals, y la configuración del bucket (versionado, cifrado, lifecycle, CORS, policy y bloqueo de acceso público) sigue en Terraform, en [`storage.tf`](terraform/organization/storage.tf). El nombre del bucket es único porque lleva un sufijo `random_id`.
+La Lambda devuelve los nombres y ARNs. [`recursos-base.tf`](terraform/organization/recursos-base.tf) los expone como `local.bucket_comprobantes`, `local.bucket_historico` (y sus `_arn`), `local.stream_posiciones` y `local.stream_posiciones_arn`. El resto del código usa esos locals, y la configuración de los buckets (versionado, cifrado, lifecycle, CORS, policy y bloqueo de acceso público) sigue en Terraform, en [`storage.tf`](terraform/organization/storage.tf). Los nombres son únicos porque llevan un sufijo `random_id`.
+
+**Dos buckets, un uso cada uno.** Los comprobantes son datos operativos: los sube el navegador con un POST firmado y los lee `marcar-entregado`. El histórico son datos analíticos: crece sin parar, pasa a clases más baratas con el tiempo y lo lee Athena. Separarlos permite darle a cada uno su configuración (CORS solo en `comprobantes`, lifecycle a Glacier IR solo en `historico`) y sus permisos: la política del endpoint S3 de la VPC permite leer `comprobantes` y escribir solo `pedidos/` de `historico`.
 
 **`time_sleep` en el módulo de Lambda.** Lambda escribe los logs unos segundos después de cada invocación. Si el log group ya se borró, lo vuelve a crear fuera de Terraform. Como `recursos-base` se invoca durante el `destroy`, eso rompía el siguiente `apply`. El `time_sleep` hace que el log group se borre 60 s después que la función.
 
@@ -148,19 +157,18 @@ Hay dos formas de desplegar. **No mezclarlas sobre la misma cuenta**: cada una g
 
 1. **Secrets.** En el Learner Lab, *Start Lab* → *AWS Details* → *AWS CLI*. Cargar los tres valores en *Settings → Secrets and variables → Actions* del repositorio:
    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`. Vencen con la sesión del Lab: actualizarlos antes de cada ejecución.
-2. **Desplegar.** *Actions* → **deploy** → *Run workflow* → `apply`. Tarda unos 15 minutos (RDS es lo más lento).
+2. **Desplegar.** *Actions* → **deploy** → *Run workflow* → `apply`. Tarda unos 25 minutos (RDS y RDS Proxy son lo más lento).
    La casilla **`alta_disponibilidad`** elige el perfil: sin marcar, el perfil *Lab*, más barato; marcada, el perfil de *producción*, sin piezas atadas a una sola zona de disponibilidad (ver [Continuidad del negocio](#continuidad-del-negocio)).
-   El workflow prepara el estado remoto, aplica el plan y corre una prueba de humo: rechazo sin token (401), login de Cognito con el usuario demo y catálogo de comercios y productos leído desde RDS.
-3. **Resultado.** El resumen de la ejecución muestra la URL del API y el User Pool. El artefacto **`frontend-config`** trae el `.env.local` del frontend (solo configuración pública).
-4. **Frontend.** Copiar `.env.local` a `frontend/` y:
+   El workflow prepara el estado remoto y aplica el plan. Después compila el frontend con los outputs del apply y lo publica en Amplify Hosting ([`scripts/publicar-frontend.sh`](scripts/publicar-frontend.sh)). Al final corre una prueba de humo: rechazo sin token (401), login de Cognito con el usuario demo, catálogo de comercios y productos leído desde RDS a través del proxy, y frontend respondiendo por HTTPS.
+3. **Resultado.** El resumen de la ejecución muestra la **URL del frontend** (`https://main.<app>.amplifyapp.com`), la del API y el User Pool.
+   Usuarios demo: `cliente.demo@example.com` y `repartidor.demo@example.com`. Sus contraseñas no se imprimen en los logs; para leerlas, ver [Contraseñas demo](#contraseñas-demo).
+4. **Frontend en local (opcional, para desarrollo).** El artefacto **`frontend-config`** trae el `.env.local` (solo configuración pública). Copiarlo a `frontend/` y:
 
    ```bash
    cd frontend
    npm ci
-   npm run dev      # http://localhost:5173
+   npm run dev      # http://localhost:5173, también permitido por CORS
    ```
-
-   Usuarios demo: `cliente.demo@example.com` y `repartidor.demo@example.com`. Sus contraseñas no se imprimen en los logs; para leerlas, ver [Contraseñas demo](#contraseñas-demo).
 5. **Destruir.** *Run workflow* → `destroy`. Se borran todos los recursos del TP y se conserva el bucket del estado.
 
    > El `destroy` puede tardar 20–40 min: AWS libera las interfaces de red (ENI) de las Lambdas en VPC un rato después de borrar las funciones, y recién entonces se pueden borrar las subredes y el security group. Conviene lanzarlo con al menos 45 min de sesión del Lab por delante. Si la sesión vence a mitad de camino, el estado remoto queda desactualizado y el lock puede quedar tomado: iniciar el Lab, actualizar los secrets, borrar `delivery/terraform.tfstate.tflock` del bucket si quedó, y volver a correr `destroy`. Terraform detecta lo que ya no existe y lo saca del estado.
@@ -196,23 +204,22 @@ Hay dos formas de desplegar. **No mezclarlas sobre la misma cuenta**: cada una g
 4. **Outputs.**
 
    ```bash
-   terraform output                       # URL del API, User Pool, App Clients, bucket, stream...
+   terraform output                       # URL del frontend y del API, User Pool, App Clients, buckets, stream...
    terraform output migracion             # resultado de la migracion
    terraform output -json usuarios_demo   # credenciales de los usuarios de prueba
    ```
 
-5. **Frontend.**
+5. **Frontend.** Desde la raíz del repo, compilar y publicar en Amplify (necesita Node.js y Python):
 
    ```bash
-   cd frontend
-   npm ci
-   npm run config   # genera .env.local con los outputs de Terraform
-   npm run dev
+   ./scripts/publicar-frontend.sh   # imprime la URL https://main.<app>.amplifyapp.com
    ```
+
+   Para desarrollo local: `cd frontend && npm ci && npm run config && npm run dev`.
 
 6. **Verificar (opcional).** Desde la raíz del repo, con las mismas credenciales: `./scripts/verificar-apply.sh`.
 
-7. **Destruir.** `terraform destroy` desde `terraform/organization`. `recursos-base` vacía y borra el bucket y el stream como parte del destroy.
+7. **Destruir.** `terraform destroy` desde `terraform/organization`. `recursos-base` vacía y borra los buckets y el stream como parte del destroy, y Terraform borra la app de Amplify con sus despliegues.
 
 ### Contraseñas demo
 
@@ -253,7 +260,7 @@ La asignación no elige al repartidor más cercano: elige por el momento en que 
 | Workflow | Cuándo corre | Qué hace |
 |---|---|---|
 | [`terraform.yml`](.github/workflows/terraform.yml) | Cada PR y cada push a `main` | `fmt`, `init -backend=false`, `validate` y, si hay secrets, `plan` contra un estado vacío. En un PR desde un fork GitHub no entrega secrets: el plan se omite con un aviso y el job queda en verde. |
-| [`deploy.yml`](.github/workflows/deploy.yml) | Manual (*Run workflow*) | `plan`, `apply` o `destroy` con estado remoto, prueba de humo y artefacto del frontend. Ver [Opción A](#opción-a-desde-github-actions-recomendada). |
+| [`deploy.yml`](.github/workflows/deploy.yml) | Manual (*Run workflow*) | `plan`, `apply` o `destroy` con estado remoto, publicación del frontend en Amplify, prueba de humo y artefacto con la configuración del frontend. Ver [Opción A](#opción-a-desde-github-actions-recomendada). |
 | [`tfsec.yaml`](.github/workflows/tfsec.yaml) | Cada PR | Análisis de seguridad del código Terraform. Ver [Decisiones de seguridad](#decisiones-de-seguridad). |
 | [`terraform-docs.yml`](.github/workflows/terraform-docs.yml) | Cada PR | Documentación de los módulos. En un PR desde un fork genera sin empujar cambios. |
 | [`terraform-format.yml`](.github/workflows/terraform-format.yml) | Cada PR | `terraform fmt -check` con comentario en el PR. |
@@ -309,15 +316,27 @@ Multi-región no es parte del alcance: el compromiso del TP1 es alta disponibili
 | Estrategia | Cómo se aplica en el TP |
 |---|---|
 | **Backup & restore** | Dos capas. **Backups automáticos de RDS** (`db_dias_backup`, 7 días): restauración a cualquier punto en el tiempo, con RPO de ~5 minutos (RDS sube los logs de transacciones cada 5 minutos). **AWS Backup** (`backup_rds`): copia diaria en una bóveda propia, que sobrevive aunque se borre la instancia y es la que se puede copiar a otra región o cuenta. |
-| **Pilot light** | El propio repositorio: `deploy → apply` reconstruye las 162 piezas de la arquitectura en otra cuenta o región en ~15 minutos. Con una copia de AWS Backup llevada a esa región, la recuperación es "apply + restaurar la base". La infraestructura como código es lo que hace barato tener el piloto apagado. |
-| **Hot standby** | `db_multi_az = true`: RDS mantiene una réplica sincrónica en otra AZ y, si la primaria falla, mueve el endpoint en uno o dos minutos sin intervención. Durante el failover se cortan las conexiones abiertas: `db.py` las descarta y reconecta en la siguiente invocación. Queda en `false` por defecto porque duplica el costo de la instancia; se activa para producción o para la demo. |
+| **Pilot light** | El propio repositorio: `deploy → apply` reconstruye los ~215 recursos de la arquitectura en otra cuenta o región en ~25 minutos. Con una copia de AWS Backup llevada a esa región, la recuperación es "apply + restaurar la base". La infraestructura como código es lo que hace barato tener el piloto apagado. |
+| **Hot standby** | `db_multi_az = true`: RDS mantiene una réplica sincrónica en otra AZ y, si la primaria falla, mueve el endpoint en uno o dos minutos sin intervención. Las Lambdas siguen conectadas al RDS Proxy, que detecta la nueva primaria sin esperar la propagación del DNS y acorta el corte; si igual se pierde una conexión, `db.py` la descarta y reconecta en la siguiente invocación. Queda en `false` por defecto porque duplica el costo de la instancia; se activa para producción o para la demo. |
 | **Warm standby / multi-site** | No aplican en el Learner Lab, que limita el trabajo a una región práctica. El camino sería una réplica de lectura de RDS en otra región (warm standby) o Aurora Global Database con la arquitectura desplegada en dos regiones y ruteo de Route 53 (multi-site). |
 
 **AWS Elastic Disaster Recovery** replica servidores (EC2 u on-premise) a nivel de bloque; esta arquitectura no tiene servidores que replicar. **AWS DMS** sirve para migrar o replicar una base de datos desde otro motor u origen; sería la herramienta para traer los datos de un sistema anterior a este RDS, no para su continuidad diaria.
 
 ### Escalado según la curva de demanda
 
-El cómputo (Lambda, Step Functions, API Gateway) escala solo con la carga y baja a cero sin pedidos. El único componente con capacidad fija es el **stream de posiciones**, y es el que se escala ([`escalado.tf`](terraform/organization/escalado.tf), variable `escalado`):
+El cómputo (Lambda, Step Functions, API Gateway) escala solo con la carga y baja a cero sin pedidos. Hay dos componentes con capacidad fija: la **base de datos**, protegida por RDS Proxy, y el **stream de posiciones**, que se escala ([`escalado.tf`](terraform/organization/escalado.tf), variable `escalado`).
+
+**Conexiones a la base: RDS Proxy.** Cada contenedor de Lambda abre su propia conexión. En un pico, cientos de contenedores agotarían las ~100 conexiones de `db.t3.micro`. El proxy ([`database.tf`](terraform/organization/database.tf)) mantiene un pool chico contra la base y multiplexa sobre él las conexiones de las Lambdas: la conexión real vuelve al pool al terminar cada transacción. El pool usa como máximo `db_proxy_max_conexiones_pct` (90 %) de las conexiones de la base, y si se llena, la Lambda espera hasta 30 s por una conexión libre en vez de fallar.
+
+| Detalle | Decisión |
+|---|---|
+| Credenciales | El proxy lee usuario y clave del mismo secreto de Secrets Manager, con `LabRole` (`rds.amazonaws.com` está en su trust policy). Las Lambdas siguen leyendo el secreto, pero se conectan al host de `DB_HOST`, el endpoint del proxy |
+| TLS | `require_tls = true`. El proxy presenta un certificado de Amazon Trust Services y no de la CA de RDS: `db.py` confía en las CA del sistema y además en el bundle de RDS |
+| Red | En las subredes `app`, junto a las Lambdas y al endpoint de Secrets Manager. La NACL de `datos` ya acepta el 5432 desde ahí |
+| Pinning | El proxy fija una conexión a un cliente cuando la sesión cambia de estado (`SET`, `PREPARE` con nombre, tablas temporales). El código no hace nada de eso: `pg8000` usa sentencias sin nombre |
+| Migración | Terraform registra la instancia en el proxy, que tarda unos minutos en aceptar conexiones: `migrar-esquema` reintenta mientras tanto |
+
+Escalado del stream:
 
 | Política | Cómo funciona |
 |---|---|
@@ -348,10 +367,10 @@ Los eventos de posición y del ciclo de vida de los pedidos se archivan de forma
 
 | Capa | Cómo |
 |---|---|
-| **Posiciones** | Kinesis → `archivar-posiciones` → `historico/posiciones/fecha=AAAA-MM-DD/`, en lotes. |
-| **Eventos de pedidos** | Cada cambio de estado ya se publica en el topic `estado_pedido`. Una cola SQS suscrita los junta y `archivar-eventos` los completa con comercio, repartidor, total y punto de entrega (lee RDS, por eso corre en la VPC) y los escribe en `historico/pedidos/fecha=AAAA-MM-DD/`. Los mensajes que fallan 5 veces van a `eventos-fallidos`, con alarma. |
+| **Posiciones** | Kinesis → `archivar-posiciones` → bucket `historico`, `posiciones/fecha=AAAA-MM-DD/`, en lotes. |
+| **Eventos de pedidos** | Cada cambio de estado ya se publica en el topic `estado_pedido`. Una cola SQS suscrita los junta y `archivar-eventos` los completa con comercio, repartidor, total y punto de entrega (lee RDS, por eso corre en la VPC) y los escribe en `pedidos/fecha=AAAA-MM-DD/` del bucket `historico`. Los mensajes que fallan 5 veces van a `eventos-fallidos`, con alarma. |
 | **Catálogo** | Base `delivery_analitica` de Glue con las tablas `posiciones` y `eventos_pedido`. Usan *partition projection*: Athena deduce las particiones del nombre de la carpeta, sin crawler de Glue (que necesitaría un rol propio y cobra por ejecución). |
-| **Consultas** | Workgroup `delivery-analitica`, con resultados en `athena/` del mismo bucket (se borran a los 7 días) y un tope de datos escaneados por consulta (`athena_limite_escaneo_mb`, 1 GB): Athena cobra por dato leído, y una consulta mal escrita no puede recorrer todo el histórico. |
+| **Consultas** | Workgroup `delivery-analitica`, con resultados en `athena/` del bucket `historico` (se borran a los 7 días) y un tope de datos escaneados por consulta (`athena_limite_escaneo_mb`, 1 GB): Athena cobra por dato leído, y una consulta mal escrita no puede recorrer todo el histórico. |
 
 **Panel.** Las consultas guardadas del workgroup, en [`consultas/`](terraform/organization/consultas/):
 
@@ -366,22 +385,35 @@ Los eventos de posición y del ciclo de vida de los pedidos se archivan de forma
 Para usarlo: abrir Athena (output `athena_url`), elegir el workgroup **`delivery-analitica`**, pestaña *Saved queries*, y correr la consulta. Los eventos llegan a S3 con hasta un minuto de demora (`archivo_ventana_segundos`).
 
 **Decisiones:**
-- El lifecycle pasa `historico/` a **Glacier Instant Retrieval**, que Athena puede leer directamente; Glacier Flexible Retrieval o Deep Archive dejarían lo más viejo afuera de las consultas.
-- El endpoint de S3 de la VPC es de solo lectura salvo `historico/pedidos/`, el único prefijo donde escribe una Lambda de la VPC.
+- El histórico tiene **su propio bucket**, separado de los comprobantes: el lifecycle a Standard-IA y **Glacier Instant Retrieval** se aplica a todo `posiciones/` y `pedidos/` sin tocar las fotos de entrega, que son datos operativos. Glacier IR se puede leer directamente desde Athena; Glacier Flexible Retrieval o Deep Archive dejarían lo más viejo afuera de las consultas.
+- El endpoint de S3 de la VPC solo permite leer el bucket `comprobantes` y escribir en `pedidos/` del bucket `historico`, el único prefijo donde escribe una Lambda de la VPC.
 - Los datos se guardan como JSON, simple de escribir y de leer. En producción convendría convertirlos a Parquet (por ejemplo con Firehose o un `CREATE TABLE AS` diario): columnar y comprimido, Athena escanea mucho menos y la consulta cuesta menos.
 - En un despliegue real el panel sería QuickSight sobre estas mismas tablas; en el Learner Lab no está disponible.
+
+### Frontend en Amplify Hosting
+
+Las apps de cliente y repartidor (React + Vite) se sirven desde **AWS Amplify Hosting** ([`frontend.tf`](terraform/organization/frontend.tf)), en `https://main.<app>.amplifyapp.com`.
+
+| Decisión | Por qué |
+|---|---|
+| Amplify y no S3 + CloudFront | El Learner Lab niega CloudFront (`AccessDenied`). Un bucket S3 con sitio web estático solo sirve **HTTP**, y sin HTTPS el navegador no ofrece `crypto.randomUUID` (con el que el cliente arma el id idempotente del pedido) ni la geolocalización del cliente y del repartidor. Amplify sirve por HTTPS con certificado y CDN administrados por AWS, sin bucket público |
+| Despliegue manual, sin conectar el repositorio | Conectar GitHub necesita un token personal guardado en Amplify. El workflow compila con los outputs del apply y sube el zip con `create-deployment` / `start-deployment` ([`scripts/publicar-frontend.sh`](scripts/publicar-frontend.sh)) |
+| Regla de reescritura para la SPA | Toda ruta sin extensión (`/cliente`, `/repartidor/...`) devuelve `index.html` y la resuelve React Router; un archivo que no existe sigue dando 404 |
+| CORS | La URL de Amplify se suma en Terraform a los orígenes permitidos del API y del bucket de comprobantes; `cors_origenes` queda para orígenes extra (por defecto, `localhost:5173` para desarrollo) |
 
 ### Costos
 
 - **AWS Budgets** (`presupuesto_mensual_usd`, 50 USD): presupuesto mensual con dos avisos al topic de alertas: cuando el pronóstico del mes supera el 80 % y cuando el gasto real supera el 100 %. Es por cuenta y no por tags porque en el Learner Lab la cuenta es exclusiva del TP, y el filtro por tags exige activar las *cost allocation tags* en Billing, que el Lab no permite.
 - **Etiquetado:** `default_tags` del provider etiqueta todos los recursos con el proyecto. Es la base para separar costos con Cost Explorer en una cuenta compartida.
 - **Decisiones de diseño por costo:** sin NAT Gateway (los servicios se alcanzan por endpoints de VPC o desde Lambdas fuera de la VPC), `db.t3.micro`, un shard de Kinesis fuera de las franjas de pico (un segundo shard durante unas 6 h por día cuesta unos 0,09 USD), lifecycle del histórico a Standard-IA y Glacier IR, y todo el cómputo serverless: si no hay pedidos, casi no hay costo.
+- **RDS Proxy** se cobra por vCPU de la instancia, con un mínimo de 2 vCPU: unos 0,03 USD/h (~22 USD/mes) para `db.t3.micro`. Es el precio de no depender del límite de conexiones de la base cuando las Lambdas escalan; con Aurora Serverless v2 o una instancia más grande el proxy seguiría haciendo falta.
+- **Amplify Hosting:** se paga por GB almacenado y servido; para la demo son centavos.
 
 ### Monitoreo
 
-- **Dashboard** `delivery-operacion` (output `dashboard_url`): en una sola pantalla, los pedidos (ejecuciones de las dos state machines), la API (pedidos, errores 4xx/5xx y latencia p90), los errores y throttles de todas las Lambdas, el ingreso a Kinesis, sus shards y escrituras rechazadas, el atraso de sus consumidores, conexiones y CPU de RDS, y las colas de fallidos.
+- **Dashboard** `delivery-operacion` (output `dashboard_url`): en una sola pantalla, los pedidos (ejecuciones de las dos state machines), la API (pedidos, errores 4xx/5xx y latencia p90), los errores y throttles de todas las Lambdas, el ingreso a Kinesis, sus shards y escrituras rechazadas, el atraso de sus consumidores, las conexiones de las Lambdas al proxy contra las que el proxy abre a la base, la CPU de RDS, y las colas de fallidos.
 - **Alarmas** al topic `alertas`: mensajes en las colas de fallidos, ejecuciones fallidas de cada workflow, cada cambio de shards del stream (lo avisa la Lambda de escalado), el uso cercano a la capacidad de `shards_maximo`, los rechazos con el stream ya en el máximo, y el presupuesto. La alarma de escrituras rechazadas no avisa por email: dispara el escalado y se rearma cada minuto mientras dura un pico.
-- **CloudTrail:** el historial de eventos de los últimos 90 días está activo por defecto en toda cuenta y alcanza para auditar quién creó o cambió qué. No se crea un trail propio porque necesitaría otro bucket S3, que en este Lab hay que crear fuera del provider (ver [sección 4](#4-lambda-recursos-base)).
+- **CloudTrail:** el historial de eventos de los últimos 90 días está activo por defecto en toda cuenta y alcanza para auditar quién creó o cambió qué. No se crea un trail propio: necesitaría otro bucket S3 que en este Lab tendría que crear `recursos-base` (ver [sección 4](#4-lambda-recursos-base)), y para el proyecto alcanza con los 90 días.
 
 ### Gobernanza en producción
 
@@ -401,8 +433,8 @@ La cuenta del Learner Lab es administrada por AWS Academy, así que estos servic
 | Pilar | Decisiones del TP |
 |---|---|
 | **Excelencia operativa** | Infraestructura como código, despliegue desde el pipeline con prueba de humo, dashboard, alarmas, logs con retención definida. |
-| **Seguridad** | Cognito con grupos por rol y autorizador JWT, base en subred privada sin acceso público, credenciales en Secrets Manager por endpoint privado, TLS obligatorio en S3, cifrado en reposo, tfsec en cada PR con las excepciones justificadas. |
-| **Fiabilidad** | Reintentos con backoff y colas de fallidos, idempotencia (`crear-pedido`, nombre de ejecución por pedido), restricciones en la base que impiden estados inválidos (un pedido asignado por repartidor), reconexión a RDS, Multi-AZ y dos capas de backup. |
-| **Eficiencia de rendimiento** | Serverless con escalado automático, stream de posiciones con escalado programado por franjas y reactivo por alarma, búsqueda de repartidores cercanos con índice GiST de PostGIS y elección según cuándo llega cada uno frente al tiempo de preparación del comercio, Kinesis para absorber el volumen de posiciones sin presionar la base. |
+| **Seguridad** | Cognito con grupos por rol y autorizador JWT, frontend servido solo por HTTPS, base en subred privada sin acceso público y alcanzable solo desde el proxy, TLS obligatorio hacia el proxy y en S3, credenciales en Secrets Manager por endpoint privado, buckets separados con permisos por uso, cifrado en reposo, tfsec en cada PR con las excepciones justificadas. |
+| **Fiabilidad** | Reintentos con backoff y colas de fallidos, idempotencia (`crear-pedido`, nombre de ejecución por pedido), restricciones en la base que impiden estados inválidos (un pedido asignado por repartidor), RDS Proxy para que un pico de Lambdas no agote las conexiones de la base, reconexión a RDS, Multi-AZ y dos capas de backup. |
+| **Eficiencia de rendimiento** | Serverless con escalado automático, pool de conexiones en RDS Proxy, stream de posiciones con escalado programado por franjas y reactivo por alarma, búsqueda de repartidores cercanos con índice GiST de PostGIS y elección según cuándo llega cada uno frente al tiempo de preparación del comercio, Kinesis para absorber el volumen de posiciones sin presionar la base. |
 | **Optimización de costos** | Pago por uso, sin NAT Gateway, instancias mínimas, lifecycle del histórico, presupuesto con alertas. |
 | **Sostenibilidad** | Sin servidores ociosos: los recursos de cómputo solo consumen mientras hay pedidos. |

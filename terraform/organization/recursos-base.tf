@@ -13,12 +13,20 @@ module "recursos_base" {
   timeout    = 600
 }
 
+# Dos buckets con usos distintos:
+# - comprobantes: fotos de entrega, subidas desde el navegador con un POST
+#   firmado. Datos operativos, leidos por marcar-entregado.
+# - historico: posiciones y eventos de pedidos para Athena, con lifecycle a
+#   Standard-IA y Glacier IR, mas los resultados de las consultas.
 resource "aws_lambda_invocation" "recursos_base" {
   function_name   = module.recursos_base.function_name
   lifecycle_scope = "CRUD"
 
   input = jsonencode({
-    bucket  = "${var.proyecto}-archivos-${random_id.bucket.hex}"
+    buckets = {
+      comprobantes = "${var.proyecto}-comprobantes-${random_id.bucket.hex}"
+      historico    = "${var.proyecto}-historico-${random_id.bucket.hex}"
+    }
     stream  = "${var.proyecto}-posiciones"
     shards  = var.escalado.shards_minimo
     kms_key = "alias/aws/kinesis"
@@ -29,8 +37,13 @@ resource "aws_lambda_invocation" "recursos_base" {
 locals {
   recursos_base = jsondecode(aws_lambda_invocation.recursos_base.result)
 
-  bucket_archivos       = local.recursos_base.bucket
-  bucket_archivos_arn   = local.recursos_base.bucket_arn
-  stream_posiciones     = local.recursos_base.stream
-  stream_posiciones_arn = local.recursos_base.stream_arn
+  # {comprobantes = {nombre, arn}, historico = {nombre, arn}}
+  buckets = local.recursos_base.buckets
+
+  bucket_comprobantes     = local.buckets.comprobantes.nombre
+  bucket_comprobantes_arn = local.buckets.comprobantes.arn
+  bucket_historico        = local.buckets.historico.nombre
+  bucket_historico_arn    = local.buckets.historico.arn
+  stream_posiciones       = local.recursos_base.stream
+  stream_posiciones_arn   = local.recursos_base.stream_arn
 }

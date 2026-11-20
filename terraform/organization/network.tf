@@ -60,20 +60,67 @@ resource "aws_security_group" "vpce" {
   }
 }
 
-resource "aws_vpc_security_group_egress_rule" "lambda_a_rds" {
+resource "aws_security_group" "rds_proxy" {
+  name_prefix = "${var.proyecto}-rds-proxy-"
+  description = "RDS Proxy"
+  vpc_id      = module.vpc.vpc_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Lambda -> RDS Proxy -> RDS. Las Lambdas no llegan a la instancia directo:
+# todas las conexiones pasan por el pool del proxy.
+resource "aws_vpc_security_group_egress_rule" "lambda_a_proxy" {
   security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.rds_proxy.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+}
+
+resource "aws_vpc_security_group_ingress_rule" "proxy_desde_lambda" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+}
+
+resource "aws_vpc_security_group_egress_rule" "proxy_a_rds" {
+  security_group_id            = aws_security_group.rds_proxy.id
   referenced_security_group_id = aws_security_group.rds.id
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
 }
 
-resource "aws_vpc_security_group_ingress_rule" "rds_desde_lambda" {
+resource "aws_vpc_security_group_ingress_rule" "rds_desde_proxy" {
   security_group_id            = aws_security_group.rds.id
-  referenced_security_group_id = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.rds_proxy.id
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
+}
+
+# El proxy lee usuario y clave del secreto de RDS. La VPC no tiene salida a
+# internet: si esa lectura sale desde las interfaces del proxy, pasa por el
+# endpoint de Secrets Manager (el proxy esta en las mismas subredes app).
+resource "aws_vpc_security_group_egress_rule" "proxy_a_vpce" {
+  security_group_id            = aws_security_group.rds_proxy.id
+  referenced_security_group_id = aws_security_group.vpce.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpce_desde_proxy" {
+  security_group_id            = aws_security_group.vpce.id
+  referenced_security_group_id = aws_security_group.rds_proxy.id
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
 }
 
 resource "aws_vpc_security_group_egress_rule" "lambda_a_vpce" {
@@ -102,11 +149,12 @@ resource "aws_vpc_endpoint" "secretsmanager" {
 }
 
 data "aws_iam_policy_document" "vpce_s3" {
+  # marcar-entregado (dentro de la VPC) verifica que exista el comprobante.
   statement {
     actions = ["s3:GetObject", "s3:ListBucket"]
     resources = [
-      local.bucket_archivos_arn,
-      "${local.bucket_archivos_arn}/comprobantes/*",
+      local.bucket_comprobantes_arn,
+      "${local.bucket_comprobantes_arn}/*",
     ]
 
     principals {
@@ -116,10 +164,10 @@ data "aws_iam_policy_document" "vpce_s3" {
   }
 
   # archivar-eventos (dentro de la VPC) escribe el historico de pedidos. Desde
-  # la VPC solo se puede escribir ahi: el resto del bucket sigue de solo lectura.
+  # la VPC solo se puede escribir ahi: nada mas de S3 es alcanzable.
   statement {
     actions   = ["s3:PutObject"]
-    resources = ["${local.bucket_archivos_arn}/historico/pedidos/*"]
+    resources = ["${local.bucket_historico_arn}/pedidos/*"]
 
     principals {
       type        = "*"

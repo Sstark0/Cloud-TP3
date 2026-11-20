@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Puerto fijo: http://localhost:5173 es el origen permitido por CORS en la API
-// y en el bucket (variable cors_origenes de Terraform). strictPort evita que Vite
-// se mude a otro puerto y las llamadas fallen por CORS.
+// Puerto fijo: además del frontend publicado en Amplify, http://localhost:5173
+// es el origen permitido por CORS en la API y en el bucket de comprobantes
+// (variable cors_origenes de Terraform). strictPort evita que Vite se mude a
+// otro puerto y las llamadas fallen por CORS.
 export default defineConfig({
   plugins: [react()],
   // amazon-cognito-identity-js depende de `buffer`, que usa el `global` de Node.

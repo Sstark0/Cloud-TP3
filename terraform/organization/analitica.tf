@@ -1,14 +1,14 @@
 # Historial y panel analitico (funcionalidad 5 del TP1).
 #
 # - Posiciones: ya se archivan de forma continua (Kinesis -> archivar-posiciones
-#   -> S3 historico/posiciones/).
+#   -> bucket historico, posiciones/).
 # - Eventos de pedidos: cada cambio de estado ya se publica en el topic
 #   estado_pedido. Una cola SQS suscrita lo junta en lotes y archivar-eventos lo
-#   completa con datos del pedido y lo escribe en historico/pedidos/.
+#   completa con datos del pedido y lo escribe en pedidos/ del mismo bucket.
 # - Glue Data Catalog describe esos archivos como tablas, y Athena las consulta
 #   con SQL. Las consultas guardadas son el panel.
 #
-# Todo historico/ comparte el lifecycle a Standard-IA y Glacier Instant
+# Todo el bucket historico comparte el lifecycle a Standard-IA y Glacier Instant
 # Retrieval: Athena puede leer Glacier IR, asi que lo mas viejo sigue siendo
 # consultable (Glacier Flexible Retrieval o Deep Archive no lo serian).
 
@@ -20,7 +20,7 @@ locals {
   # carpeta, asi que no hace falta un crawler de Glue (ni su rol, ni su costo).
   tablas_analitica = {
     posiciones = {
-      prefijo = "historico/posiciones"
+      prefijo = "posiciones"
       columnas = {
         repartidor_id = "string"
         lat           = "double"
@@ -29,7 +29,7 @@ locals {
       }
     }
     eventos_pedido = {
-      prefijo = "historico/pedidos"
+      prefijo = "pedidos"
       columnas = {
         pedido_id     = "string"
         estado        = "string"
@@ -108,7 +108,7 @@ resource "aws_sns_topic_subscription" "eventos_pedido" {
 }
 
 # Dentro de la VPC porque lee RDS; escribe en S3 por el endpoint gateway
-# (su politica permite PutObject solo en historico/pedidos/).
+# (su politica permite PutObject solo en pedidos/ del bucket historico).
 module "archivar_eventos" {
   source = "../modules/lambda_function"
 
@@ -120,7 +120,7 @@ module "archivar_eventos" {
   vpc_config = local.vpc_lambda
 
   environment = merge(local.entorno_db, {
-    BUCKET = local.bucket_archivos
+    BUCKET = local.bucket_historico
   })
 }
 
@@ -155,7 +155,7 @@ resource "aws_glue_catalog_table" "analitica" {
     "projection.fecha.range"         = "2026-01-01,NOW"
     "projection.fecha.interval"      = "1"
     "projection.fecha.interval.unit" = "DAYS"
-    "storage.location.template"      = "s3://${local.bucket_archivos}/${each.value.prefijo}/fecha=$${fecha}/"
+    "storage.location.template"      = "s3://${local.bucket_historico}/${each.value.prefijo}/fecha=$${fecha}/"
   }
 
   partition_keys {
@@ -164,7 +164,7 @@ resource "aws_glue_catalog_table" "analitica" {
   }
 
   storage_descriptor {
-    location      = "s3://${local.bucket_archivos}/${each.value.prefijo}/"
+    location      = "s3://${local.bucket_historico}/${each.value.prefijo}/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
 
@@ -185,7 +185,7 @@ resource "aws_glue_catalog_table" "analitica" {
 
 # ---------------------------------------------------------------- consultas
 
-# Resultados en el bucket del proyecto (athena/, con su propio lifecycle) y un
+# Resultados en el bucket historico (athena/, con su propio lifecycle) y un
 # tope de datos escaneados por consulta: una consulta mal escrita no puede
 # recorrer todo el historico.
 resource "aws_athena_workgroup" "analitica" {
@@ -202,7 +202,7 @@ resource "aws_athena_workgroup" "analitica" {
     }
 
     result_configuration {
-      output_location = "s3://${local.bucket_archivos}/athena/"
+      output_location = "s3://${local.bucket_historico}/athena/"
 
       encryption_configuration {
         encryption_option = "SSE_S3"

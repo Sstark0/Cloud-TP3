@@ -87,16 +87,26 @@ jobs:
         if: inputs.accion == 'apply' || inputs.accion == 'destroy'
         run: terraform apply -input=false -no-color -lock-timeout=5m tfplan
 
-      - name: Comprobar API, autenticacion y catalogo
+      - uses: actions/setup-node@v4
+        if: inputs.accion == 'apply'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Compila con los outputs del apply (API, User Pool, App Clients) y sube
+      # el build a Amplify Hosting. Deja frontend/.env.local para el artefacto.
+      - name: Publicar el frontend en Amplify
+        if: inputs.accion == 'apply'
+        run: bash "$GITHUB_WORKSPACE/scripts/publicar-frontend.sh"
+
+      - name: Comprobar API, autenticacion, catalogo y frontend
         if: inputs.accion == 'apply'
         run: bash "$GITHUB_WORKSPACE/.github/scripts/terraform-smoke.sh"
 
-      - name: Generar configuracion del frontend
-        if: inputs.accion == 'apply'
-        run: node "$GITHUB_WORKSPACE/frontend/scripts/config-desde-terraform.mjs"
-
-      # Solo la configuracion publica (URL del API, User Pool, App Clients).
-      # Nunca se publican el estado ni los planes: contienen credenciales.
+      # Solo la configuracion publica (URL del API, User Pool, App Clients),
+      # para correr el frontend en local. Nunca se publican el estado ni los
+      # planes: contienen credenciales.
       - name: Guardar configuracion publica del frontend
         if: inputs.accion == 'apply'
         uses: actions/upload-artifact@v4
@@ -122,10 +132,11 @@ jobs:
             fi
             echo "Estado privado: s3://$STATE_BUCKET/delivery/terraform.tfstate"
             if [[ "$ACCION" == apply ]]; then
+              echo "Frontend: $(terraform output -raw frontend_url)"
               echo "API: $(terraform output -raw api_url)"
               echo "User Pool: $(terraform output -raw cognito_user_pool_id)"
               echo "Dashboard: $(terraform output -raw dashboard_url)"
-              echo 'La configuracion del frontend esta en el artefacto frontend-config.'
+              echo 'Para correr el frontend en local, la configuracion esta en el artefacto frontend-config.'
             elif [[ "$ACCION" == destroy ]]; then
               echo 'Se eliminaron los recursos del TP. Se conserva el bucket del estado.'
             else

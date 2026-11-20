@@ -76,3 +76,49 @@ resource "aws_secretsmanager_secret_version" "db" {
     dbname   = aws_db_instance.main.db_name
   })
 }
+
+# ---------------------------------------------------------------- RDS Proxy
+#
+# Cada contenedor de Lambda abre su propia conexion. En un pico, cientos de
+# contenedores agotarian las ~100 conexiones de db.t3.micro. El proxy mantiene
+# un pool chico contra la base y multiplexa las conexiones de las Lambdas:
+# reutiliza la conexion al terminar cada transaccion. Tambien acorta el
+# failover de Multi-AZ, porque las Lambdas siguen conectadas al proxy.
+#
+# Usa LabRole para leer el secreto (rds.amazonaws.com esta en su trust policy).
+# Esta en las subredes app, junto a las Lambdas y al endpoint de Secrets
+# Manager; la NACL de datos ya acepta el 5432 desde esas subredes.
+resource "aws_db_proxy" "main" {
+  name                   = var.proyecto
+  engine_family          = "POSTGRESQL"
+  role_arn               = data.aws_iam_role.lab.arn
+  vpc_subnet_ids         = module.vpc.private_subnets
+  vpc_security_group_ids = [aws_security_group.rds_proxy.id]
+  require_tls            = true
+  idle_client_timeout    = 1800
+
+  auth {
+    auth_scheme = "SECRETS"
+    iam_auth    = "DISABLED"
+    secret_arn  = aws_secretsmanager_secret.db.arn
+  }
+
+  depends_on = [aws_secretsmanager_secret_version.db]
+}
+
+resource "aws_db_proxy_default_target_group" "main" {
+  db_proxy_name = aws_db_proxy.main.name
+
+  connection_pool_config {
+    # Deja margen para conectarse directo a la base en una emergencia.
+    max_connections_percent      = var.db_proxy_max_conexiones_pct
+    max_idle_connections_percent = 50
+    connection_borrow_timeout    = 30
+  }
+}
+
+resource "aws_db_proxy_target" "main" {
+  db_proxy_name          = aws_db_proxy.main.name
+  target_group_name      = aws_db_proxy_default_target_group.main.name
+  db_instance_identifier = aws_db_instance.main.identifier
+}

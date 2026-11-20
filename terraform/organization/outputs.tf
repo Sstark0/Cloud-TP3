@@ -6,8 +6,31 @@ output "stream_posiciones" {
   value = local.stream_posiciones
 }
 
-output "bucket_archivos" {
-  value = local.bucket_archivos
+output "bucket_comprobantes" {
+  value = local.bucket_comprobantes
+}
+
+output "bucket_historico" {
+  value = local.bucket_historico
+}
+
+output "rds_proxy_endpoint" {
+  description = "Endpoint de RDS Proxy (privado: solo alcanzable desde las Lambdas de la VPC)."
+  value       = aws_db_proxy.main.endpoint
+}
+
+output "frontend_url" {
+  description = "URL publica del frontend (Amplify Hosting)."
+  value       = local.frontend_url
+}
+
+output "amplify_app_id" {
+  description = "App de Amplify donde scripts/publicar-frontend.sh sube el build."
+  value       = aws_amplify_app.frontend.id
+}
+
+output "amplify_branch" {
+  value = aws_amplify_branch.main.branch_name
 }
 
 output "migracion" {

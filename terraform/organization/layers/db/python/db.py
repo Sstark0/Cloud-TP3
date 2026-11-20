@@ -8,6 +8,12 @@ import pg8000.native
 
 CA_BUNDLE = "/opt/rds-ca/global-bundle.pem"
 
+# RDS Proxy presenta un certificado de Amazon Trust Services (ACM), no de la CA
+# de RDS: se confia en las CA del sistema, que la incluyen, y ademas en el
+# bundle de RDS para poder conectarse directo a la instancia.
+_SSL = ssl.create_default_context()
+_SSL.load_verify_locations(cafile=CA_BUNDLE)
+
 # Errores que indican que la conexion cacheada ya no sirve. El primero que
 # aparece tras un corte es ConnectionResetError (un OSError), no InterfaceError.
 CONEXION_ROTA = (pg8000.native.InterfaceError, OSError)
@@ -28,10 +34,11 @@ def conexion():
         _conn = pg8000.native.Connection(
             user=c["username"],
             password=c["password"],
-            host=c["host"],
+            # DB_HOST: endpoint del proxy. Sin ella, la instancia del secreto.
+            host=os.environ.get("DB_HOST") or c["host"],
             port=int(c["port"]),
             database=c["dbname"],
-            ssl_context=ssl.create_default_context(cafile=CA_BUNDLE),
+            ssl_context=_SSL,
         )
     return _conn
 
