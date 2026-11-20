@@ -11,24 +11,34 @@ REGION = os.environ["AWS_REGION"]
 def handler(event, context):
     accion = event.get("tf", {}).get("action", "create")
     previo = event.get("tf", {}).get("prev_input") or {}
+    buckets = event["buckets"]  # {clave: nombre}
 
     if accion == "delete":
         _borrar_stream(event["stream"])
-        _borrar_bucket(event["bucket"])
+        for nombre in buckets.values():
+            _borrar_bucket(nombre)
         return {}
 
     if accion == "update":
         if previo.get("stream") and previo["stream"] != event["stream"]:
             _borrar_stream(previo["stream"])
-        if previo.get("bucket") and previo["bucket"] != event["bucket"]:
-            _borrar_bucket(previo["bucket"])
+        # Buckets que ya no estan en la entrada (renombrados o quitados). "bucket"
+        # es el formato anterior, con un unico bucket.
+        anteriores = set((previo.get("buckets") or {}).values())
+        if previo.get("bucket"):
+            anteriores.add(previo["bucket"])
+        for nombre in anteriores - set(buckets.values()):
+            _borrar_bucket(nombre)
 
     stream_arn = _crear_stream(event["stream"], event["shards"], event["kms_key"], event["tags"])
-    _crear_bucket(event["bucket"], event["tags"])
     particion = stream_arn.split(":")[1]
+    for nombre in buckets.values():
+        _crear_bucket(nombre, event["tags"])
     return {
-        "bucket": event["bucket"],
-        "bucket_arn": f"arn:{particion}:s3:::{event['bucket']}",
+        "buckets": {
+            clave: {"nombre": nombre, "arn": f"arn:{particion}:s3:::{nombre}"}
+            for clave, nombre in buckets.items()
+        },
         "stream": event["stream"],
         "stream_arn": stream_arn,
     }

@@ -17,7 +17,7 @@ def handler(event, context):
     except ValueError:
         return api.respuesta(400, {"error": "id invalido"})
 
-    clave = f"comprobantes/{pedido_id}/{api.claims(event)['sub']}.jpg"
+    clave = f"{pedido_id}/{api.claims(event)['sub']}.jpg"
     subida = s3.generate_presigned_post(
         Bucket=BUCKET,
         Key=clave,

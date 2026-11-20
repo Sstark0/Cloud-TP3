@@ -218,9 +218,13 @@ locals {
       ]
     },
     {
-      titulo = "RDS: conexiones y CPU"
+      # Conexiones de las Lambdas al proxy contra las que el proxy abre a la
+      # base: la diferencia es lo que ahorra el pool.
+      titulo = "RDS: conexiones (Lambdas -> proxy -> base) y CPU"
       stat   = "Average"
       metricas = [
+        ["AWS/RDS", "ClientConnections", "ProxyName", aws_db_proxy.main.name, { stat = "Maximum" }],
+        ["AWS/RDS", "DatabaseConnections", "ProxyName", aws_db_proxy.main.name, { stat = "Maximum" }],
         ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", aws_db_instance.main.identifier],
         ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", aws_db_instance.main.identifier, { yAxis = "right" }],
       ]

@@ -50,7 +50,7 @@ variable "db_instance_class" {
 }
 
 variable "historico_lifecycle" {
-  description = "Dias hasta pasar historico/ a Standard-IA, a Glacier Instant Retrieval y hasta borrarlo."
+  description = "Dias hasta pasar el bucket historico a Standard-IA, a Glacier Instant Retrieval y hasta borrarlo."
   type = object({
     dias_standard_ia = number
     dias_glacier_ir  = number
@@ -189,7 +189,7 @@ variable "alerta_email" {
 
 
 variable "cors_origenes" {
-  description = "Origenes del frontend que pueden llamar a la API y subir comprobantes a S3."
+  description = "Origenes extra (ademas del frontend en Amplify) que pueden llamar a la API y subir comprobantes a S3. Por defecto, el servidor de desarrollo local."
   type        = list(string)
   default     = ["http://localhost:5173"]
 
@@ -291,5 +291,16 @@ variable "athena_limite_escaneo_mb" {
   validation {
     condition     = var.athena_limite_escaneo_mb >= 10
     error_message = "Athena exige un tope de al menos 10 MB."
+  }
+}
+
+variable "db_proxy_max_conexiones_pct" {
+  description = "Porcentaje de max_connections de RDS que puede usar el pool de RDS Proxy."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.db_proxy_max_conexiones_pct >= 10 && var.db_proxy_max_conexiones_pct <= 100
+    error_message = "db_proxy_max_conexiones_pct tiene que estar entre 10 y 100."
   }
 }

@@ -19,7 +19,7 @@ class EntregaInvalida(Exception):
 def handler(event, context):
     pedido_id = event["pedido_id"]
     repartidor_id = event["repartidor_id"]
-    clave = f"comprobantes/{pedido_id}/{repartidor_id}.jpg"
+    clave = f"{pedido_id}/{repartidor_id}.jpg"
 
     try:
         s3.head_object(Bucket=BUCKET, Key=clave)

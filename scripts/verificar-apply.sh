@@ -20,7 +20,8 @@ PROYECTO=$(out proyecto)
 API=$(out api_url)
 POOL=$(out cognito_user_pool_id)
 CLIENTE=$($TF output -json cognito_client_ids | python3 -c 'import json,sys; print(json.load(sys.stdin)["repartidor"])')
-BUCKET=$(out bucket_archivos)
+BUCKET=$(out bucket_historico)
+COMPROBANTES=$(out bucket_comprobantes)
 DESDE=$(( $(date +%s) * 1000 ))
 
 echo "1. LabRole en Lambda y Step Functions"
@@ -48,6 +49,15 @@ echo "2. Instancia RDS"
 read -r clase motor estado < <(aws rds describe-db-instances --db-instance-identifier "$PROYECTO" \
   --query 'DBInstances[0].[DBInstanceClass,EngineVersion,DBInstanceStatus]' --output text)
 [[ "$clase" == db.t3.micro && "$estado" == available ]] && ok "$clase, postgres $motor, $estado" || mal "$clase / $estado"
+salud=$(aws rds describe-db-proxy-targets --db-proxy-name "$PROYECTO" \
+  --query "Targets[?Type=='RDS_INSTANCE'].TargetHealth.State" --output text)
+[[ "$salud" == AVAILABLE ]] && ok "RDS Proxy: target AVAILABLE" || mal "RDS Proxy: target $salud"
+# La instancia solo acepta conexiones desde el security group del proxy.
+origenes=$(aws ec2 describe-security-group-rules --filters Name=group-id,Values="$(aws rds describe-db-instances \
+  --db-instance-identifier "$PROYECTO" --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' --output text)" \
+  --query 'SecurityGroupRules[?!IsEgress].ReferencedGroupInfo.GroupId' --output text)
+proxy_sg=$(aws rds describe-db-proxies --db-proxy-name "$PROYECTO" --query 'DBProxies[0].VpcSecurityGroupIds[0]' --output text)
+[[ "$origenes" == "$proxy_sg" ]] && ok "RDS acepta conexiones solo desde el proxy" || mal "RDS acepta desde: $origenes"
 
 echo "3. PostGIS"
 version=$($TF output -json migracion | python3 -c 'import json,sys; print(json.load(sys.stdin).get("postgis",""))')
@@ -111,9 +121,18 @@ if COLA=$($TF output -raw cola_posiciones_fallidas 2>/dev/null); then
 fi
 
 echo "   S3 (archivar-posiciones escribe cada archivo_ventana_segundos; por defecto 5 s sin el PR de consumidores, 60 s con el)"
-objetos=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix historico/posiciones/ --query 'KeyCount' --output text)
-[[ "$objetos" =~ ^[0-9]+$ && "$objetos" -ge 1 ]] && ok "$objetos objetos en s3://$BUCKET/historico/posiciones/" \
-  || echo "  ...  todavia sin objetos: reintentar con 'aws s3 ls s3://$BUCKET/historico/posiciones/ --recursive' en unos minutos"
+objetos=$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix posiciones/ --query 'KeyCount' --output text)
+[[ "$objetos" =~ ^[0-9]+$ && "$objetos" -ge 1 ]] && ok "$objetos objetos en s3://$BUCKET/posiciones/" \
+  || echo "  ...  todavia sin objetos: reintentar con 'aws s3 ls s3://$BUCKET/posiciones/ --recursive' en unos minutos"
+
+# Cada bucket con lo suyo: el lifecycle a Glacier IR solo en el historico, el
+# CORS para el POST firmado solo en comprobantes.
+aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" --query 'Rules[].Transitions[].StorageClass' --output text | grep -q GLACIER_IR \
+  && ok "historico: lifecycle a Glacier IR" || mal "historico sin lifecycle a Glacier IR"
+aws s3api get-bucket-cors --bucket "$COMPROBANTES" --query 'CORSRules[0].AllowedMethods' --output text | grep -q POST \
+  && ok "comprobantes: CORS para el POST firmado" || mal "comprobantes sin CORS"
+aws s3api get-bucket-lifecycle-configuration --bucket "$COMPROBANTES" --query 'Rules[].Transitions[]' --output text | grep -q . \
+  && mal "comprobantes tiene transiciones de lifecycle" || ok "comprobantes sin transiciones a otras clases"
 
 # Misma llamada firmada, por HTTP y por HTTPS: la policy tiene que cortar solo la primera.
 if aws s3api list-objects-v2 --bucket "$BUCKET" --max-items 1 --endpoint-url "http://s3.${REGION}.amazonaws.com" >/dev/null 2>&1; then
@@ -150,6 +169,16 @@ else
     rm -f "$TMP_ESC"
   fi
 fi
+
+echo "7. Frontend en Amplify Hosting"
+FRONT=$(out frontend_url)
+for ruta in / /cliente /repartidor; do
+  codigo=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT$ruta")
+  [[ "$codigo" == 200 ]] && ok "$FRONT$ruta -> 200" || mal "$FRONT$ruta -> $codigo (¿se corrio scripts/publicar-frontend.sh?)"
+done
+cors=$(curl -s -o /dev/null -D - -X OPTIONS "$API/comercios" -H "Origin: $FRONT" \
+  -H 'Access-Control-Request-Method: GET' | tr -d '\r' | grep -i '^access-control-allow-origin:' | cut -d' ' -f2)
+[[ "$cors" == "$FRONT" ]] && ok "la API acepta CORS desde el frontend" || mal "CORS de la API para $FRONT: '$cors'"
 
 echo
 [[ $FALLAS -eq 0 ]] && echo "Todo OK" || echo "$FALLAS verificaciones fallaron"

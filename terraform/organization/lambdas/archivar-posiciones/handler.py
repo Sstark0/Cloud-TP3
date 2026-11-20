@@ -18,7 +18,7 @@ def handler(event, context):
     )
     shard = primero["eventID"].split(":")[0]
     clave = (
-        f"historico/posiciones/fecha={llegada:%Y-%m-%d}/"
+        f"posiciones/fecha={llegada:%Y-%m-%d}/"
         f"{shard}-{primero['kinesis']['sequenceNumber']}.jsonl"
     )
 

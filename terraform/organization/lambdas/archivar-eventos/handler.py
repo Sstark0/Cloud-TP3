@@ -17,7 +17,7 @@ BUCKET = os.environ["BUCKET"]
 # Archiva en S3 los cambios de estado de los pedidos que publica el topic
 # estado_pedido (llegan por SQS, en lotes). Cada evento se completa con los
 # datos del pedido que hacen falta para analizar: comercio, repartidor, total y
-# punto de entrega. Quedan en historico/pedidos/fecha=AAAA-MM-DD/, junto a las
+# punto de entrega. Quedan en pedidos/fecha=AAAA-MM-DD/ del bucket historico, junto a las
 # posiciones, con el mismo lifecycle y consultables desde Athena.
 def handler(event, context):
     eventos = []
@@ -47,7 +47,7 @@ def handler(event, context):
     for fecha, lote in por_fecha.items():
         # El id del primer mensaje hace que un reintento del mismo lote pise el
         # mismo objeto en vez de duplicarlo.
-        clave = f"historico/pedidos/fecha={fecha}/{lote[0]['mensaje_id']}.jsonl"
+        clave = f"pedidos/fecha={fecha}/{lote[0]['mensaje_id']}.jsonl"
         s3.put_object(Bucket=BUCKET, Key=clave, Body="\n".join(json.dumps(e) for e in lote).encode())
 
     resumen = {"eventos": len(eventos), "archivos": len(por_fecha)}
