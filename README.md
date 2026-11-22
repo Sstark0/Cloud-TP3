@@ -2,9 +2,14 @@
 
 **82.08 Cloud Computing**
 
-![Arquitectura en AWS](docs/arquitectura.png)
+![Arquitectura en AWS, versión simplificada](docs/arquitectura-simplificada.png)
 
-Diagrama editable: [`arquitectura-aws.drawio`](arquitectura-aws.drawio) (se abre con [draw.io](https://app.diagrams.net)). Los colores de las flechas siguen la leyenda: pedido y asignación, posición del repartidor, entrega y comprobante, historial y analítica, y acceso y red.
+La arquitectura tiene dos diagramas. Ninguno incluye el pipeline de despliegue, porque no es parte de la arquitectura desplegada.
+
+- **Simplificado** (arriba): la arquitectura de un vistazo. Las Lambdas que solo pasan un mensaje de un servicio a otro aparecen como texto sobre la flecha; las que trabajan contra la base se agrupan por función. La VPC muestra las dos zonas de disponibilidad, y los servicios de operación, seguridad y costos están en un panel al costado. Editable: [`arquitectura-simplificada.drawio`](arquitectura-simplificada.drawio).
+- **Detallado**: cada una de las 21 Lambdas, las rutas de la API, los endpoints de la VPC, las colas de fallidos y las alarmas. Imagen: [`docs/arquitectura.png`](docs/arquitectura.png). Editable: [`arquitectura-aws.drawio`](arquitectura-aws.drawio).
+
+Los dos se abren con [draw.io](https://app.diagrams.net). Los colores de las flechas son los mismos en los dos: pedido y asignación, posición del repartidor, entrega y comprobante, e historial y analítica; el gris es acceso, red y datos. En los dos, la base de datos primaria está en la zona A y el standby en la zona B; el standby existe solo cuando el deploy se lanza con `alta_disponibilidad`.
 
 El módulo raíz de Terraform está en [`terraform/organization/`](terraform/organization/) y el módulo propio en [`terraform/modules/`](terraform/modules/). Hay un archivo por capa de la arquitectura: `network`, `database` (RDS y RDS Proxy), `auth`, `api`, `compute`, `orchestration`, `messaging`, `streaming`, `escalado`, `analitica`, `storage`, `frontend` (Amplify Hosting), `monitoring` e `iam`. Las variables, los outputs, los locals, los providers y las versiones están en archivos separados.
 
