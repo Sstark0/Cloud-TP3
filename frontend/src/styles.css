@@ -659,10 +659,12 @@ label {
 .pasos li::before {
   content: "";
   position: absolute;
-  top: 11px;
+  z-index: 0;
+  top: 9px;
   right: 50%;
   width: 100%;
-  height: 2px;
+  height: 6px;
+  border-radius: 6px;
   background: var(--linea);
 }
 .pasos li:first-child::before {
@@ -678,6 +680,7 @@ label {
 }
 .paso-marca {
   position: relative;
+  z-index: 1; /* por encima de la línea, que dibuja el paso siguiente */
   display: grid;
   place-items: center;
   width: 24px;
@@ -1759,6 +1762,385 @@ label {
   }
 }
 
+/* ------------------------------------------------------------ estado del envío (como "Delivery status") */
+.estado-entrega {
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.1rem 1rem;
+  border-radius: 28px;
+  background: var(--superficie);
+  box-shadow: var(--sombra);
+  text-align: center;
+}
+.estado-entrega h2 {
+  margin: 0.2rem 0 0.15rem;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.estado-entrega > p {
+  max-width: 34ch;
+  margin: 0 auto 1rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.estado-entrega .pasos {
+  margin: 0;
+  padding: 0.7rem 0.4rem 0.6rem;
+  border-radius: 20px;
+  background: var(--fondo);
+}
+.estado-entrega-fallido h2 {
+  color: var(--rojo);
+}
+
+.ilus {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 118px;
+  margin: 0 auto;
+}
+.ilus-moto,
+.ilus-caja {
+  position: relative;
+  z-index: 1;
+  width: 104px;
+  height: 104px;
+  filter: drop-shadow(0 10px 10px rgb(21 24 30 / 0.16));
+}
+.ilus-sombra {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 84px;
+  height: 10px;
+  margin-left: -42px;
+  border-radius: 50%;
+  background: rgb(21 24 30 / 0.12);
+}
+/* andando: la moto se sacude un poco y deja líneas de velocidad detrás */
+.ilus-andando .ilus-moto {
+  animation: moto-sacude 0.5s ease-in-out infinite alternate;
+}
+.ilus-viento {
+  position: absolute;
+  z-index: 0;
+  right: 2px;
+  top: 34px;
+  display: grid;
+  gap: 9px;
+}
+.ilus-viento i {
+  display: block;
+  height: 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--acento) 45%, transparent);
+  animation: viento 0.9s linear infinite;
+}
+.ilus-viento i:nth-child(1) {
+  width: 26px;
+}
+.ilus-viento i:nth-child(2) {
+  width: 38px;
+  animation-delay: 0.3s;
+}
+.ilus-viento i:nth-child(3) {
+  width: 22px;
+  animation-delay: 0.6s;
+}
+/* buscando: un radar detrás de la moto */
+.ilus-radar {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  margin: -54px 0 0 -48px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--acento) 22%, transparent);
+  animation: radar-ilus 1.8s ease-out infinite;
+}
+.ilus-parado .ilus-moto {
+  filter: grayscale(0.6) drop-shadow(0 10px 10px rgb(21 24 30 / 0.12));
+  opacity: 0.75;
+}
+.ilus-entregado .ilus-caja {
+  animation: caja-llega 0.6s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.ilus-fallido .ilus-caja {
+  filter: grayscale(1) drop-shadow(0 10px 10px rgb(21 24 30 / 0.12));
+  opacity: 0.6;
+}
+@keyframes moto-sacude {
+  to {
+    transform: translateY(-3px) rotate(-1.5deg);
+  }
+}
+@keyframes viento {
+  from {
+    transform: translateX(-14px);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+@keyframes radar-ilus {
+  from {
+    transform: scale(0.5);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@keyframes caja-llega {
+  from {
+    transform: translateY(-24px) scale(0.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ilus-moto,
+  .ilus-caja,
+  .ilus-viento i,
+  .ilus-radar {
+    animation: none !important;
+  }
+}
+
+/* calificación ya guardada */
+.calificada {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+.estrellas-fijas {
+  display: inline-flex;
+  gap: 0.15rem;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--linea);
+}
+.estrellas-fijas .activa {
+  color: #f2a900;
+}
+.calificada-comentario {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-style: italic;
+}
+.chip.calificacion-chip {
+  background: #fff3cc;
+  color: #8a5a00;
+}
+
+/* ------------------------------------------------------------ app del repartidor */
+.shell.tema-repartidor {
+  --tinte-repartidor: #cdeedd;
+  background:
+    radial-gradient(130% 320px at 50% -80px, var(--tinte-repartidor) 0%, transparent 72%) no-repeat,
+    var(--fondo);
+}
+.tema-repartidor .tarjeta {
+  border-radius: 24px;
+  padding: 1.15rem;
+}
+.cabecera-repartidor {
+  margin-bottom: 0.6rem;
+}
+.cabecera-repartidor .saludo-lugar strong {
+  overflow: visible;
+}
+.interruptor {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 520px;
+  padding: 0.9rem 1rem 0.9rem 1.2rem;
+  border: 0;
+  border-radius: 22px;
+  background: var(--superficie);
+  box-shadow: var(--sombra);
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.25s;
+}
+.interruptor.encendido {
+  background: var(--acento);
+  color: #ffffff;
+}
+.interruptor:focus-visible {
+  outline: 3px solid var(--acento);
+  outline-offset: 3px;
+}
+.interruptor:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+.interruptor-texto {
+  flex: 1;
+  display: grid;
+  gap: 0.1rem;
+}
+.interruptor-texto strong {
+  font-family: var(--display);
+  font-size: 1.12rem;
+}
+.interruptor-texto span {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+.interruptor-pista {
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--linea);
+  transition: background-color 0.25s;
+}
+.interruptor.encendido .interruptor-pista {
+  background: rgb(255 255 255 / 0.35);
+}
+.interruptor-perilla {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgb(21 24 30 / 0.25);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.interruptor.encendido .interruptor-perilla {
+  transform: translateX(24px);
+}
+.tarjeta.esperando {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  text-align: center;
+}
+.tarjeta.esperando strong {
+  font-family: var(--display);
+  font-size: 1.15rem;
+}
+.tarjeta.esperando p {
+  max-width: 34ch;
+  margin: 0;
+}
+.tema-repartidor .tarjeta.oferta {
+  box-shadow:
+    inset 0 0 0 2px var(--acento),
+    0 14px 34px rgb(15 42 32 / 0.14);
+}
+.tema-repartidor .cuenta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--fondo);
+  color: var(--acento);
+}
+.tema-repartidor .cuenta.urgente {
+  background: var(--rojo-fondo);
+  color: var(--rojo);
+}
+.tema-repartidor .tiempo {
+  height: 6px;
+  border-radius: 6px;
+}
+.tema-repartidor .tiempo span {
+  background: var(--acento);
+}
+.oferta-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0.8rem 0 0.4rem;
+}
+.oferta-cabecera strong {
+  font-family: var(--display);
+  font-size: 1.05rem;
+}
+.oferta-cabecera .precio-grande {
+  font-size: 1.6rem;
+}
+.tema-repartidor .por-que {
+  border-radius: 16px;
+}
+.tema-repartidor .fila-botones .btn {
+  min-height: 52px;
+  border-radius: 16px;
+}
+.pedido-repartidor {
+  text-align: left;
+}
+.pedido-repartidor .ilus {
+  margin-top: -0.3rem;
+}
+.pedido-repartidor-titulo {
+  margin: 0.1rem 0 0.1rem;
+  text-align: center;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.centrado-texto {
+  margin-top: 0;
+  text-align: center;
+}
+.pedido-repartidor .btn.primario {
+  min-height: 54px;
+  margin-top: 0.6rem;
+  border-radius: 16px;
+}
+.tarjeta-posicion .encabezado h3 {
+  white-space: nowrap;
+}
+.tarjeta-posicion .encabezado .muted {
+  text-align: right;
+}
+.tarjeta-posicion .segmentado {
+  border-radius: 999px;
+}
+.tarjeta-posicion .segmentado button {
+  border-radius: 999px;
+}
+.tarjeta-posicion .mapa {
+  border-radius: 18px;
+}
+.fila-pedido.plana {
+  padding: 0.5rem 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  border-top: 1px solid var(--linea);
+}
+@media (prefers-color-scheme: dark) {
+  .shell.tema-repartidor {
+    --tinte-repartidor: #12352a;
+  }
+  .chip.calificacion-chip {
+    background: rgb(242 169 0 / 0.16);
+    color: #f5c04a;
+  }
+}
+
 /* ------------------------------------------------------------ portada */
 .portada,
 .acceso {
@@ -2366,7 +2748,8 @@ label {
     gap: 1rem;
     align-items: start;
   }
-  .grilla-repartidor > .aviso {
+  .grilla-repartidor > .aviso,
+  .grilla-repartidor > .cabecera-repartidor {
     grid-column: 1 / -1;
   }
   .shell {

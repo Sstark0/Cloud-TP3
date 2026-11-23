@@ -14,8 +14,10 @@ def handler(event, context):
         if not api.grupos(event) & {"cliente", "repartidor"}:
             return api.respuesta(403, {"error": "solo para clientes y repartidores"})
         pedidos = db.consultar(
-            "SELECT p.id, c.nombre AS comercio, p.estado, p.total, p.repartidor_id, p.creado_en"
+            "SELECT p.id, c.nombre AS comercio, p.estado, p.total, p.repartidor_id, p.creado_en,"
+            " cal.puntaje AS calificacion"
             " FROM pedido p JOIN comercio c ON c.id = p.comercio_id"
+            " LEFT JOIN calificacion cal ON cal.pedido_id = p.id"
             " WHERE p.cliente_id = :usuario OR p.repartidor_id = :usuario"
             " ORDER BY p.creado_en DESC LIMIT 50",
             usuario=usuario,
@@ -39,10 +41,14 @@ def handler(event, context):
             " p.repartidor_id,"
             " ST_Y(rp.ubicacion::geometry) AS repartidor_lat, ST_X(rp.ubicacion::geometry) AS repartidor_lng,"
             " rp.actualizado_en AS repartidor_actualizado_en,"
-            " p.creado_en"
+            " p.creado_en,"
+            " cal.puntaje AS calificacion, cal.comentario AS calificacion_comentario"
             " FROM pedido p JOIN comercio c ON c.id = p.comercio_id"
             " LEFT JOIN repartidor_posicion rp"
             "   ON rp.repartidor_id = p.repartidor_id AND p.estado = 'ASIGNADO'"
+            # La calificacion se guarda con POST .../calificacion; se devuelve para
+            # mostrarla en vez de volver a pedirla.
+            " LEFT JOIN calificacion cal ON cal.pedido_id = p.id"
             " WHERE p.id = :id AND (p.cliente_id = :usuario OR p.repartidor_id = :usuario)",
             id=pedido_id,
             usuario=usuario,

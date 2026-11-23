@@ -98,7 +98,7 @@ export default function App() {
       <Route
         path="/repartidor/*"
         element={
-          <AppShell app="repartidor" titulo="Delivery Repartidor" grupo="repartidor">
+          <AppShell app="repartidor" titulo="Delivery Repartidor" grupo="repartidor" barra={false}>
             <RepartidorApp />
           </AppShell>
         }

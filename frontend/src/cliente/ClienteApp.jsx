@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useSesion } from "../components/AppShell";
+import Cuenta from "../components/Cuenta";
+import IlustracionEstado from "../components/IlustracionEstado";
 import { Cargando, ErrorAviso, Estado, Leyenda, Mapa, Pasos } from "../components/comunes";
-import { Atras, Buscar, Casa, Chevron, Mira, Pin, Recibo, Reloj, Salir } from "../components/iconos";
+import { Atras, Buscar, Casa, Chevron, Mira, Pin, Recibo, Reloj } from "../components/iconos";
 import { config } from "../config";
 import { buscarDireccion, direccionDe } from "../geocodificacion";
 import { largo, restoDeRuta, rutaPorCalles } from "../ruteo";
@@ -37,27 +39,6 @@ function BotonVolver({ to, etiqueta }) {
 const nombreTransicion = (id) => ({ viewTransitionName: `comercio-${id}` });
 
 // ---------------------------------------------------------------- inicio
-function Cuenta() {
-  const { sesion, salir } = useSesion();
-  const [abierta, setAbierta] = useState(false);
-  const nombre = nombreDe(sesion.email);
-  return (
-    <div className="cuenta-menu">
-      <button className="saludo-avatar" onClick={() => setAbierta((a) => !a)} aria-expanded={abierta} aria-label="Tu cuenta">
-        {nombre.slice(0, 1) || "?"}
-      </button>
-      {abierta && (
-        <div className="cuenta-popover" role="menu">
-          <span className="muted chico">{sesion.email}</span>
-          <button className="btn ancho" role="menuitem" onClick={salir}>
-            <Salir tam={18} /> Salir
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Saludo() {
   const { sesion } = useSesion();
   const entrega = ultimaEntrega();
@@ -543,7 +524,13 @@ function Pedidos() {
                       {p.estado === "RECHAZADO" ? "sin cargo" : <span className="monto">{precio(p.total)}</span>}
                     </span>
                   </span>
-                  <Estado estado={p.estado} />
+                  {p.calificacion ? (
+                    <span className="chip calificacion-chip" aria-label={`Calificado con ${p.calificacion} de 5`}>
+                      ★ {p.calificacion}
+                    </span>
+                  ) : (
+                    <Estado estado={p.estado} />
+                  )}
                 </Ir>
               );
             })}
@@ -652,23 +639,47 @@ function useViaje(pedido, recorrido) {
   return { retirado, pendiente, metros, segundos: metros / velocidad, porCalles: Boolean(resto && !desviado) };
 }
 
-function Calificar({ pedidoId }) {
+function Estrellas({ puntaje }) {
+  return (
+    <span className="estrellas-fijas" aria-label={`${puntaje} de 5`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n} className={n <= puntaje ? "activa" : ""} aria-hidden="true">
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// La calificación queda en la tabla calificacion; GET /pedidos/{id} la devuelve,
+// así que un pedido ya calificado la muestra en vez de volver a pedirla.
+function Calificar({ pedido }) {
   const { app } = useSesion();
   const [puntaje, setPuntaje] = useState(0);
   const [comentario, setComentario] = useState("");
-  const [estado, setEstado] = useState(null); // null | "enviando" | "ok" | Error
+  const [estado, setEstado] = useState(null); // null | "enviando" | Error
+  const [guardada, setGuardada] = useState(
+    pedido.calificacion ? { puntaje: pedido.calificacion, comentario: pedido.calificacion_comentario } : null
+  );
 
   async function enviar() {
     setEstado("enviando");
     try {
-      await api(app, "POST", `/pedidos/${pedidoId}/calificacion`, { puntaje, comentario: comentario || undefined });
-      setEstado("ok");
+      await api(app, "POST", `/pedidos/${pedido.id}/calificacion`, { puntaje, comentario: comentario || undefined });
+      setGuardada({ puntaje, comentario });
     } catch (e) {
-      setEstado(e instanceof ApiError && e.status === 409 ? "ok" : e);
+      setEstado(e);
     }
   }
 
-  if (estado === "ok") return <div className="aviso ok">Gracias, guardamos tu calificación.</div>;
+  if (guardada)
+    return (
+      <div className="tarjeta calificada">
+        <span className="muted chico">Tu calificación</span>
+        <Estrellas puntaje={guardada.puntaje} />
+        {guardada.comentario && <p className="calificada-comentario">“{guardada.comentario}”</p>}
+      </div>
+    );
   return (
     <div className="tarjeta">
       <h3>¿Cómo estuvo la entrega?</h3>
@@ -697,20 +708,50 @@ function Calificar({ pedidoId }) {
 
 const reloj = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-function Buscando({ desde }) {
+function TiempoBuscando({ desde }) {
   useTick(1000);
   const limite = config.esperaRepartidorSegundos;
   const lleva = desde ? Math.max(0, (Date.now() - desde) / 1000) : 0;
   return (
-    <div className="buscando">
-      <span className="radar" aria-hidden="true" />
-      <div>
-        <strong>Buscando un repartidor cerca del comercio</strong>
-        <span className="muted chico bloque">
-          Lleva <span className="monto">{reloj(lleva)}</span>. Si en <span className="monto">{reloj(limite)}</span> no
-          aparece ninguno, el pedido se cancela.
-        </span>
-      </div>
+    <>
+      Lleva <span className="monto">{reloj(lleva)}</span>. Si en <span className="monto">{reloj(limite)}</span> no aparece
+      ninguno, el pedido se cancela.
+    </>
+  );
+}
+
+// Estado del envío, como "Delivery status": la moto, qué está pasando y el progreso.
+function EstadoEntrega({ pedido, viaje }) {
+  const estado = pedido?.estado || "RECIBIDO";
+  let tipo, titulo, detalle;
+  if (estado === "RECIBIDO") {
+    [tipo, titulo, detalle] = ["recibido", "Recibimos tu pedido", "Lo estamos registrando…"];
+  } else if (estado === "CREADO") {
+    [tipo, titulo, detalle] = ["buscando", "Buscando repartidor", <TiempoBuscando desde={parseFecha(pedido.creado_en)} />];
+  } else if (estado === "ASIGNADO") {
+    tipo = "andando";
+    titulo = viaje?.retirado ? "Tu pedido va en camino" : "El repartidor va a buscar tu pedido";
+    detalle = viaje ? (
+      <>
+        A <span className="monto">{textoDistancia(viaje.metros)}</span> · llega en ~
+        <span className="monto">{textoMinutos(viaje.segundos)}</span>
+      </>
+    ) : (
+      "Esperando la ubicación del repartidor…"
+    );
+  } else if (estado === "ENTREGADO") {
+    [tipo, titulo, detalle] = ["entregado", "¡Llegó tu pedido!", "Que lo disfrutes."];
+  } else if (estado === "CANCELADO") {
+    [tipo, titulo, detalle] = ["fallido", "Pedido cancelado", "No conseguimos un repartidor para este pedido."];
+  } else {
+    [tipo, titulo, detalle] = ["fallido", "El comercio no pudo tomarlo", "Algún producto ya no está disponible. No se te cobró."];
+  }
+  return (
+    <div className={`estado-entrega estado-entrega-${tipo}`} aria-live="polite">
+      <IlustracionEstado tipo={tipo} />
+      <h2>{titulo}</h2>
+      <p>{detalle}</p>
+      <Pasos estado={estado} />
     </div>
   );
 }
@@ -755,11 +796,9 @@ function Seguimiento() {
       <section>
         <div className="cabecera-seguimiento">
           <BotonVolver to="/cliente/pedidos" etiqueta="Volver a mis pedidos" />
+          <h1>Tu pedido</h1>
         </div>
-        <Pasos estado="RECIBIDO" />
-        <div className="tarjeta centrado">
-          <Cargando texto="Recibimos tu pedido. Lo estamos registrando…" />
-        </div>
+        <EstadoEntrega pedido={null} />
       </section>
     );
 
@@ -777,26 +816,8 @@ function Seguimiento() {
         <BotonVolver to="/cliente/pedidos" etiqueta="Volver a mis pedidos" />
         <h1>{pedido.comercio}</h1>
       </div>
-      <Pasos estado={pedido.estado} />
+      <EstadoEntrega pedido={pedido} viaje={v} />
       <ErrorAviso error={error} />
-
-      {pedido.estado === "CREADO" && <Buscando desde={parseFecha(pedido.creado_en)} />}
-      {pedido.estado === "CANCELADO" && (
-        <div className="aviso error">No conseguimos un repartidor para este pedido y lo cancelamos.</div>
-      )}
-      {pedido.estado === "RECHAZADO" && (
-        <div className="aviso error">El comercio no pudo tomar este pedido: algún producto ya no está disponible.</div>
-      )}
-
-      {v && (
-        <div className="viaje">
-          <strong>{v.retirado ? "En camino a tu dirección" : "Yendo a retirar tu pedido"}</strong>
-          <span>
-            a <span className="monto">{textoDistancia(v.metros)}</span> · llega en ~
-            <span className="monto">{textoMinutos(v.segundos)}</span>
-          </span>
-        </div>
-      )}
 
       {!rechazado && (
         <>
@@ -816,7 +837,7 @@ function Seguimiento() {
         </>
       )}
 
-      {pedido.estado === "ENTREGADO" && <Calificar pedidoId={pedido.id} />}
+      {pedido.estado === "ENTREGADO" && <Calificar pedido={pedido} />}
 
       <div className="comanda">
         <div className="comanda-cabecera">

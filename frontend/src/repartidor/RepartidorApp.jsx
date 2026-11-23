@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, subirAS3 } from "../api";
 import { useSesion } from "../components/AppShell";
+import Cuenta from "../components/Cuenta";
+import IlustracionEstado from "../components/IlustracionEstado";
 import { Cargando, ErrorAviso, Estado, Leyenda, Mapa } from "../components/comunes";
-import { Camara } from "../components/iconos";
+import { Camara, Moto, Reloj } from "../components/iconos";
+import { estiloComercio, nombreDe } from "../cliente/comida";
 import { config } from "../config";
 import { aJpeg, distancia, fechaHora, parseFecha, precio, usePolling, useTick } from "../util";
 import { avanzar, rutaPorCalles } from "../ruteo";
@@ -20,16 +23,20 @@ function mover(desde, hacia, metros) {
   return { lat: desde.lat + (hacia.lat - desde.lat) * f, lng: desde.lng + (hacia.lng - desde.lng) * f };
 }
 
-// ---------------------------------------------------------------- estado
-function TarjetaEstado({ estado, ocupado, onCambiar }) {
+// ---------------------------------------------------------------- cabecera y estado
+// Como el inicio del cliente: saludo, la cuenta y, en lugar de la dirección, el
+// estado. El interruptor reemplaza a la tarjeta "Tu estado".
+function Cabecera({ estado, ocupado, onCambiar }) {
+  const { sesion } = useSesion();
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
+  const disponible = estado === "DISPONIBLE";
 
-  async function cambiar(nuevo) {
+  async function alternar() {
     setEnviando(true);
     setError(null);
     try {
-      await onCambiar(nuevo);
+      await onCambiar(disponible ? "DESCONECTADO" : "DISPONIBLE");
     } catch (e) {
       setError(e);
     } finally {
@@ -37,26 +44,36 @@ function TarjetaEstado({ estado, ocupado, onCambiar }) {
     }
   }
 
-  const visible = ocupado ? "OCUPADO" : estado;
+  const titulo = ocupado ? "Tenés un pedido en curso" : disponible ? "Esperando pedidos" : "¿Salimos a repartir?";
   return (
-    <div className="tarjeta">
-      <div className="encabezado">
-        <h3>Tu estado</h3>
-        <Estado estado={visible} />
+    <header className="saludo cabecera-repartidor">
+      <div className="saludo-fila">
+        <span className="saludo-pin" aria-hidden="true">
+          <Moto tam={20} />
+        </span>
+        <span className="crece saludo-lugar">
+          <span className="muted chico">Tu estado</span>
+          <strong>
+            <Estado estado={ocupado ? "OCUPADO" : estado} />
+          </strong>
+        </span>
+        <Cuenta />
       </div>
-      {ocupado ? (
-        <p className="muted chico">Tenés un pedido en curso. Cuando lo entregues volvés a quedar disponible.</p>
-      ) : (
-        <div className="segmentado">
-          {["DISPONIBLE", "DESCONECTADO"].map((e) => (
-            <button key={e} className={estado === e ? "activo" : ""} disabled={enviando} onClick={() => cambiar(e)}>
-              <i className={`punto ${e === "DISPONIBLE" ? "punto-ok" : ""}`} /> {e === "DISPONIBLE" ? "Disponible" : "Desconectado"}
-            </button>
-          ))}
-        </div>
+      <p className="saludo-hola">Hola, {nombreDe(sesion.email)}</p>
+      <h1 className="saludo-titulo">{titulo}</h1>
+      {!ocupado && (
+        <button className={`interruptor${disponible ? " encendido" : ""}`} role="switch" aria-checked={disponible} disabled={enviando} onClick={alternar}>
+          <span className="interruptor-texto">
+            <strong>{disponible ? "Recibiendo pedidos" : "Recibir pedidos"}</strong>
+            <span>{disponible ? "Tocá para desconectarte" : "Te llegan los de comercios a menos de 5 km"}</span>
+          </span>
+          <span className="interruptor-pista" aria-hidden="true">
+            <span className="interruptor-perilla" />
+          </span>
+        </button>
       )}
       <ErrorAviso error={error} />
-    </div>
+    </header>
   );
 }
 
@@ -72,7 +89,7 @@ function TarjetaPosicion({ modo, setModo, posicion, ultimoEnvio, errorEnvio, emi
   }
 
   return (
-    <div className="tarjeta">
+    <div className="tarjeta tarjeta-posicion">
       <div className="encabezado">
         <h3>Tu posición</h3>
         <span className="muted chico">
@@ -167,17 +184,29 @@ function Oferta({ oferta, onResponder }) {
   }
 
   return (
-    <div className="tarjeta oferta">
+    <div className="tarjeta oferta" style={{ "--tinte": estiloComercio(oferta.comercio).tinte }}>
       <div className="encabezado">
-        <span className="eyebrow">Nueva oferta</span>
-        {restan != null && <span className={`cuenta ${restan < 20 ? "urgente" : ""}`}>{restan} s</span>}
+        <strong>Nueva oferta</strong>
+        {restan != null && (
+          <span className={`cuenta ${restan < 20 ? "urgente" : ""}`}>
+            <Reloj tam={14} /> {restan} s
+          </span>
+        )}
       </div>
       {restan != null && (
         <div className="tiempo" aria-hidden="true">
           <span style={{ width: `${(100 * restan) / config.ofertaTimeoutSegundos}%` }} />
         </div>
       )}
-      <p className="monto fuerte grande">{precio(oferta.total)}</p>
+      <div className="oferta-cabecera">
+        <span className="pedido-img">
+          <img src={estiloComercio(oferta.comercio).img} alt="" />
+        </span>
+        <span className="crece">
+          <strong className="bloque">{oferta.comercio}</strong>
+          <span className="precio-grande">{precio(oferta.total)}</span>
+        </span>
+      </div>
       <PorQue oferta={oferta} />
       <ol className="paradas">
         <li className="parada-retiro">
@@ -222,11 +251,12 @@ function PedidoEnCurso({ pedido, fase, confirmando, onEntregar }) {
   }
 
   return (
-    <div className="tarjeta destacada">
-      <div className="encabezado">
-        <h3>Pedido en curso</h3>
-        <Estado estado={pedido.estado} />
-      </div>
+    <div className="tarjeta destacada pedido-repartidor">
+      <IlustracionEstado tipo="andando" />
+      <h2 className="pedido-repartidor-titulo">{fase === "retiro" ? "Andá a retirar el pedido" : "Llevá el pedido a destino"}</h2>
+      <p className="muted centrado-texto">
+        {pedido.comercio} · <span className="monto">{precio(pedido.total)}</span>
+      </p>
       <ol className="paradas">
         <li className={`parada-retiro ${fase === "retiro" ? "activa" : "hecha"}`}>
           <span className="muted chico bloque">{fase === "retiro" ? "Ahora: retirá en" : "Retirado en"}</span>
@@ -446,10 +476,15 @@ export default function RepartidorApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modo]);
 
-  const historial = (pedidos.datos?.lista || []).filter((p) => p.estado === "ENTREGADO").slice(0, 5);
+  const entregados = (pedidos.datos?.lista || []).filter((p) => p.estado === "ENTREGADO");
+  const historial = entregados.slice(0, 5);
+  // Promedio de las calificaciones que dejaron los clientes (de los últimos 50 pedidos que trae la API).
+  const puntajes = entregados.map((p) => p.calificacion).filter(Boolean);
+  const promedio = puntajes.length ? puntajes.reduce((a, b) => a + b, 0) / puntajes.length : null;
 
   return (
     <section className="grilla-repartidor">
+      <Cabecera estado={estado} ocupado={ocupado} onCambiar={cambiarEstado} />
       {aviso && (
         <div className="aviso ok" onClick={() => setAviso(null)}>
           {aviso}
@@ -470,14 +505,19 @@ export default function RepartidorApp() {
           <Oferta key={o.task_token} oferta={o} onResponder={responder} />
         ))}
         {estado === "DISPONIBLE" && !ocupado && visibles.length === 0 && (
-          <div className="tarjeta centrado">
-            <Cargando texto="Esperando ofertas…" />
-            <p className="muted chico">
-              Te llegan los pedidos de comercios a menos de 5 km mientras estés disponible y tu posición se esté enviando.
-            </p>
+          <div className="tarjeta esperando">
+            <IlustracionEstado tipo="buscando" />
+            <strong>Buscando pedidos{zona ? ` cerca de ${zona.nombre}` : ""}</strong>
+            <p className="muted chico">Las ofertas aparecen acá. Tenés {config.ofertaTimeoutSegundos} s para aceptar cada una.</p>
           </div>
         )}
-        <TarjetaEstado estado={estado} ocupado={ocupado} onCambiar={cambiarEstado} />
+        {estado !== "DISPONIBLE" && !ocupado && (
+          <div className="tarjeta esperando">
+            <IlustracionEstado tipo="parado" />
+            <strong>Estás desconectado</strong>
+            <p className="muted chico">Activá "Recibir pedidos" para empezar. Tu posición no se envía mientras tanto.</p>
+          </div>
+        )}
       </div>
 
       <div className="columna">
@@ -499,13 +539,35 @@ export default function RepartidorApp() {
         />
         {historial.length > 0 && (
           <div className="tarjeta">
-            <h3>Tus últimas entregas</h3>
-            {historial.map((p) => (
-              <div key={p.id} className="fila-detalle chico">
-                <span>{p.comercio}</span>
-                <span className="muted">{fechaHora(p.creado_en)}</span>
-              </div>
-            ))}
+            <div className="encabezado">
+              <h3>Tus últimas entregas</h3>
+              {promedio != null && (
+                <span className="chip calificacion-chip" aria-label={`Promedio ${promedio.toFixed(1)} de 5`}>
+                  ★ {promedio.toFixed(1)}
+                </span>
+              )}
+            </div>
+            <div className="lista-pedidos">
+              {historial.map((p) => {
+                const { img, tinte } = estiloComercio(p.comercio);
+                return (
+                  <div key={p.id} className="fila-pedido plana" style={{ "--tinte": tinte }}>
+                    <span className="pedido-img chica">
+                      <img src={img} alt="" />
+                    </span>
+                    <span className="crece">
+                      <strong>{p.comercio}</strong>
+                      <span className="muted chico bloque">{fechaHora(p.creado_en)}</span>
+                    </span>
+                    {p.calificacion ? (
+                      <span className="chip calificacion-chip">★ {p.calificacion}</span>
+                    ) : (
+                      <span className="muted chico">Sin calificar</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
