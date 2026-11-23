@@ -1,35 +1,38 @@
-import { useEffect } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { configCompleta } from "./config";
 import AppShell from "./components/AppShell";
+import { Marca, useColorDeBarra } from "./components/Acceso";
 import EscenaReparto from "./components/EscenaReparto";
 import ClienteApp from "./cliente/ClienteApp";
 import RepartidorApp from "./repartidor/RepartidorApp";
 import { Bolsa, Chevron, Moto } from "./components/iconos";
+import { alClicConTransicion, useNavegarConTransicion } from "./transiciones";
 
-// En el celular, la barra del navegador toma el color de la portada.
-function useColorDeBarra(color) {
-  useEffect(() => {
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (!meta) return undefined;
-    const anterior = meta.getAttribute("content");
-    meta.setAttribute("content", color);
-    return () => meta.setAttribute("content", anterior);
-  }, [color]);
+// El ícono de la opción elegida es el que se transforma en el ícono del login.
+function marcarIconoElegido(e) {
+  e.currentTarget.querySelector(".puerta-icono").style.viewTransitionName = "icono-app";
+}
+
+function Puerta({ to, className, icono, titulo, detalle }) {
+  const navegar = useNavegarConTransicion();
+  return (
+    <Link to={to} className={`puerta ${className}`} onClick={alClicConTransicion(navegar, to, marcarIconoElegido)}>
+      <span className="puerta-icono">{icono}</span>
+      <span className="puerta-texto">
+        <strong>{titulo}</strong>
+        <span>{detalle}</span>
+      </span>
+      <Chevron tam={20} />
+    </Link>
+  );
 }
 
 function Inicio() {
-  const oscuro = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-  useColorDeBarra(oscuro ? "#10291f" : "#cdeedd");
+  useColorDeBarra("portada");
 
   return (
     <main className="portada">
-      <header className="portada-marca">
-        <span className="portada-logo">
-          <Bolsa tam={18} />
-        </span>
-        Delivery
-      </header>
+      <Marca />
 
       <div className="portada-cuerpo">
         <div className="portada-texto">
@@ -43,26 +46,20 @@ function Inicio() {
 
         <nav className="portada-hoja" aria-label="Elegí cómo usar la app">
           <h2>¿Cómo vas a usar la app?</h2>
-          <Link to="/cliente" className="puerta tema-cliente puerta-principal">
-            <span className="puerta-icono">
-              <Bolsa tam={22} />
-            </span>
-            <span className="puerta-texto">
-              <strong>Hacer un pedido</strong>
-              <span>Elegí un comercio y seguí tu pedido en vivo.</span>
-            </span>
-            <Chevron tam={20} />
-          </Link>
-          <Link to="/repartidor" className="puerta tema-repartidor">
-            <span className="puerta-icono">
-              <Moto tam={22} />
-            </span>
-            <span className="puerta-texto">
-              <strong>Repartir pedidos</strong>
-              <span>Aceptá pedidos cerca tuyo y entregalos con foto.</span>
-            </span>
-            <Chevron tam={20} />
-          </Link>
+          <Puerta
+            to="/cliente"
+            className="tema-cliente puerta-principal"
+            icono={<Bolsa tam={22} />}
+            titulo="Hacer un pedido"
+            detalle="Elegí un comercio y seguí tu pedido en vivo."
+          />
+          <Puerta
+            to="/repartidor"
+            className="tema-repartidor"
+            icono={<Moto tam={22} />}
+            titulo="Repartir pedidos"
+            detalle="Aceptá pedidos cerca tuyo y entregalos con foto."
+          />
           <p className="portada-nota">Podés abrir las dos a la vez, en ventanas distintas.</p>
         </nav>
       </div>

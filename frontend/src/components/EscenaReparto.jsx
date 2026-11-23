@@ -1,9 +1,15 @@
+import { useEffect, useState } from "react";
 import moto from "../assets/moto.png";
 
-// Ilustración de la portada: una calle que sale de un comercio y llega a una
-// casa, con la moto en camino. Dibujada en SVG para que escale sin pixelarse;
-// la moto es el mismo emoji 3D de Fluent (licencia MIT) que se usa en el mapa.
+// Ilustración de la portada (y fondo del login): una calle que sale de un
+// comercio y llega a una casa, con la moto en camino. Dibujada en SVG para que
+// escale sin pixelarse; la moto es el mismo emoji 3D de Fluent (licencia MIT)
+// que se usa en el mapa.
 const CALLE = "M 404 96 C 404 186, 252 168, 246 252 S 132 330, 24 476";
+
+// La llegada de la moto se anima solo la primera vez que se ve la portada:
+// al volver desde el login, la escena ya está en su lugar.
+let yaLlego = false;
 
 function Arbol({ x, y, r }) {
   return (
@@ -16,9 +22,22 @@ function Arbol({ x, y, r }) {
   );
 }
 
-export default function EscenaReparto() {
+export default function EscenaReparto({ animada = true, ajuste = "xMidYMax meet", className = "escena", decorativa = false }) {
+  // Se decide al montar (no en cada render: en desarrollo React renderiza dos veces).
+  const [animar] = useState(() => animada && !yaLlego);
+  useEffect(() => {
+    if (animada) yaLlego = true;
+  }, [animada]);
+
   return (
-    <svg className="escena" viewBox="0 0 480 460" role="img" aria-label="Una moto de reparto en camino desde un comercio hasta una casa">
+    <svg
+      className={`${className}${animar ? " escena-entrada" : ""}`}
+      viewBox="0 0 480 460"
+      preserveAspectRatio={ajuste}
+      {...(decorativa
+        ? { "aria-hidden": "true" }
+        : { role: "img", "aria-label": "Una moto de reparto en camino desde un comercio hasta una casa" })}
+    >
       <defs>
         <pattern id="toldo" width="14" height="14" patternUnits="userSpaceOnUse">
           <rect width="7" height="14" fill="#e2452b" />

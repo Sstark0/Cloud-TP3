@@ -1,13 +1,29 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { login, logout, sesionGuardada } from "../auth";
+import { haySesionGuardada, login, logout, sesionGuardada } from "../auth";
+import { alClicConTransicion, conTransicion, useNavegarConTransicion } from "../transiciones";
+import { PantallaAcceso } from "./Acceso";
 import { Cargando } from "./comunes";
 import { Atras, Bolsa, Moto, Salir } from "./iconos";
 
 const SesionContext = createContext(null);
 export const useSesion = () => useContext(SesionContext);
 
-function Login({ app, titulo, onIngreso }) {
+const TEXTOS = {
+  cliente: { titulo: "Ingresá para pedir", detalle: "Tus pedidos y el seguimiento en vivo te esperan adentro." },
+  repartidor: { titulo: "Ingresá para repartir", detalle: "Conectate y empezá a recibir pedidos cerca tuyo." },
+};
+
+function VolverAlInicio() {
+  const navegar = useNavegarConTransicion();
+  return (
+    <Link to="/" className="volver" onClick={alClicConTransicion(navegar, "/")}>
+      <Atras tam={16} /> Elegir otra app
+    </Link>
+  );
+}
+
+function Login({ app, onIngreso }) {
   const [email, setEmail] = useState(`${app}.demo@example.com`);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,22 +34,21 @@ function Login({ app, titulo, onIngreso }) {
     setEnviando(true);
     setError("");
     try {
-      onIngreso(await login(app, email.trim(), password));
+      const sesion = await login(app, email.trim(), password);
+      conTransicion(() => onIngreso(sesion));
     } catch (err) {
       setError(err.message);
-    } finally {
       setEnviando(false);
     }
   }
 
   return (
-    <main className={`login tema-${app}`}>
+    <PantallaAcceso app={app}>
       <form className="login-form" onSubmit={enviar}>
-        <Link to="/" className="volver">
-          <Atras tam={16} /> Elegir otra app
-        </Link>
+        <VolverAlInicio />
         <span className="login-icono">{app === "cliente" ? <Bolsa tam={28} /> : <Moto tam={28} />}</span>
-        <h1>{app === "cliente" ? "Ingresá para pedir" : "Ingresá para repartir"}</h1>
+        <h1>{TEXTOS[app].titulo}</h1>
+        <p className="login-detalle">{TEXTOS[app].detalle}</p>
         <label>
           Email
           <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -53,24 +68,30 @@ function Login({ app, titulo, onIngreso }) {
             {error}
           </p>
         )}
-        <button className="btn primario ancho" disabled={enviando}>
-          {enviando ? "Ingresando…" : "Ingresar"}
+        <button className="btn primario ancho login-enviar" disabled={enviando}>
+          {enviando ? (
+            <>
+              <span className="spinner spinner-claro" /> Ingresando…
+            </>
+          ) : (
+            "Ingresar"
+          )}
         </button>
-        <p className="nota">
-          Las contraseñas de los usuarios de demo salen de <code>terraform output -json usuarios_demo</code>.
-        </p>
       </form>
-    </main>
+    </PantallaAcceso>
   );
 }
 
 // Envuelve una app: pide login, verifica el grupo de Cognito y muestra la barra superior.
 export default function AppShell({ app, titulo, grupo, children }) {
-  const [sesion, setSesion] = useState(undefined); // undefined = restaurando la sesión guardada
+  // undefined = restaurando la sesión guardada; null = sin sesión (se muestra el login).
+  const [sesion, setSesion] = useState(() => (haySesionGuardada(app) ? undefined : null));
 
   useEffect(() => {
+    // Sin tokens guardados ya se está mostrando el login: no hay nada que restaurar.
+    if (!haySesionGuardada(app)) return undefined;
     let vigente = true;
-    sesionGuardada(app).then((s) => vigente && setSesion(s));
+    sesionGuardada(app).then((s) => vigente && conTransicion(() => setSesion(s)));
     return () => {
       vigente = false;
     };
@@ -87,18 +108,20 @@ export default function AppShell({ app, titulo, grupo, children }) {
     return () => window.removeEventListener("sesion-vencida", salir);
   }, [app]);
 
-  const cerrar = () => {
-    logout(app);
-    setSesion(null);
-  };
+  const cerrar = () =>
+    conTransicion(() => {
+      logout(app);
+      setSesion(null);
+    });
 
   if (sesion === undefined) return <Cargando texto="Recuperando la sesión…" />;
-  if (!sesion) return <Login app={app} titulo={titulo} onIngreso={setSesion} />;
+  if (!sesion) return <Login app={app} onIngreso={setSesion} />;
 
   if (!sesion.grupos.includes(grupo)) {
     return (
-      <main className={`login tema-${app}`}>
+      <PantallaAcceso app={app}>
         <div className="login-form">
+          <VolverAlInicio />
           <h1>Sin permiso</h1>
           <p>
             <b>{sesion.email}</b> no está en el grupo <code>{grupo}</code> de Cognito.
@@ -110,7 +133,7 @@ export default function AppShell({ app, titulo, grupo, children }) {
             Usar otro usuario
           </button>
         </div>
-      </main>
+      </PantallaAcceso>
     );
   }
 

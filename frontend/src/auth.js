@@ -51,6 +51,12 @@ export function sesionActual(app) {
   return new Promise((ok) => usuario.getSession((e, s) => ok(!e && s?.isValid() ? { usuario, sesion: s } : null)));
 }
 
+// Sin leer nada de la red: hay tokens guardados de esta app. Si no hay, se
+// puede mostrar el login de entrada, sin pasar por "Recuperando la sesión".
+export function haySesionGuardada(app) {
+  return Boolean(pool(app).getCurrentUser());
+}
+
 export async function sesionGuardada(app) {
   const actual = await sesionActual(app);
   return actual && aSesion(actual.sesion);

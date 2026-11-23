@@ -1066,7 +1066,8 @@ label {
 }
 
 /* ------------------------------------------------------------ portada */
-.portada {
+.portada,
+.acceso {
   --portada-fondo: #cdeedd;
   --portada-tinta: #0f2a20;
   --portada-texto: #2f5446;
@@ -1081,6 +1082,21 @@ label {
   --techo: #f1f7f4;
   --ventana: #bfe3f4;
   --sombra-escena: rgb(15 42 32 / 0.13);
+}
+/* el login del cliente usa la misma escena en tonos durazno; el del repartidor, la menta de la portada */
+.fondo-cliente {
+  --portada-fondo: #fde3d9;
+  --portada-tinta: #3a1409;
+  --portada-texto: #7a4334;
+  --calle-borde: #f2bfae;
+  --calle-linea: #ead2c9;
+  --copa: #f4b19c;
+  --copa-luz: #f9cdbf;
+  --tronco: #b98473;
+  --lado: #f1ddd5;
+  --sombra-escena: rgb(58 20 9 / 0.12);
+}
+.portada {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -1088,7 +1104,7 @@ label {
   color: var(--portada-tinta);
   overflow-x: hidden;
 }
-.portada-marca {
+.marca {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -1098,7 +1114,7 @@ label {
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.portada-logo {
+.marca-logo {
   display: grid;
   place-items: center;
   width: 34px;
@@ -1118,7 +1134,7 @@ label {
 .portada-texto h1 {
   margin: 0;
   max-width: 9ch;
-  font-size: clamp(2.7rem, 12.5vw, 5.4rem);
+  font-size: clamp(2.7rem, 12vw, 3.9rem);
   font-weight: 800;
   font-variation-settings: "opsz" 96;
   line-height: 0.95;
@@ -1133,19 +1149,20 @@ label {
   color: var(--portada-texto);
 }
 .portada-escena {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex: 1 1 0;
+  position: relative;
   min-height: 190px;
-  padding: 0.25rem 0.6rem 0;
 }
 .escena {
   display: block;
-  width: 100%;
-  max-width: 460px;
-  max-height: 36dvh;
-  margin-bottom: -6px;
+}
+/* en el celular la escena ocupa todo el alto libre entre el texto y la hoja,
+   apoyada abajo para que la calle entre en la hoja */
+.portada-escena .escena {
+  position: absolute;
+  inset: 0.4rem 0.6rem -6px;
+  width: calc(100% - 1.2rem);
+  height: calc(100% - 0.4rem + 6px);
 }
 .escena-calle,
 .escena-calle-borde,
@@ -1211,10 +1228,10 @@ label {
   transform-box: fill-box;
   transform-origin: 50% 100%;
 }
-.escena-moto {
+.escena-entrada .escena-moto {
   animation: moto-llega 1.5s cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
-.escena-pin {
+.escena-entrada .escena-pin {
   animation: pin-cae 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) 1.15s both;
 }
 @keyframes moto-llega {
@@ -1338,9 +1355,6 @@ label {
   .portada-escena {
     min-height: 150px;
   }
-  .escena {
-    max-height: 27dvh;
-  }
   .portada-hoja {
     gap: 0.55rem;
     padding-top: 1rem;
@@ -1361,7 +1375,8 @@ label {
 }
 
 @media (prefers-color-scheme: dark) {
-  .portada {
+  .portada,
+  .acceso {
     --portada-fondo: #10291f;
     --portada-tinta: #e6f5ed;
     --portada-texto: #a9cbbb;
@@ -1377,10 +1392,20 @@ label {
     --ventana: #7fb4cc;
     --sombra-escena: rgb(0 0 0 / 0.3);
   }
+  .fondo-cliente {
+    --portada-fondo: #2a1712;
+    --portada-tinta: #fbe7df;
+    --portada-texto: #d9aa9b;
+    --calle-borde: #1a0d09;
+    --copa: #7a3b2b;
+    --copa-luz: #93503d;
+    --tronco: #5e3a30;
+    --lado: #cdb5ac;
+  }
 }
 
 @media (min-width: 900px) {
-  .portada-marca {
+  .marca {
     padding: 1.6rem 3rem 0;
   }
   .portada-cuerpo {
@@ -1411,9 +1436,12 @@ label {
   .portada-escena {
     grid-area: escena;
     align-self: center;
-    padding: 0;
+    position: static;
   }
-  .escena {
+  .portada-escena .escena {
+    position: static;
+    width: 100%;
+    height: auto;
     max-width: 640px;
     max-height: 78dvh;
     margin: 0;
@@ -1443,23 +1471,62 @@ label {
   letter-spacing: -0.03em;
   margin: 0.2rem 0 0.4rem;
 }
-.login {
+.acceso {
+  position: relative;
+  isolation: isolate;
   min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--portada-fondo);
+  color: var(--portada-tinta);
+  overflow: hidden;
+}
+.acceso-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 3.6rem;
+  pointer-events: none;
+}
+/* la misma escena de la portada, en el mismo lugar, difuminada */
+.acceso-escena {
+  width: min(100% - 1.2rem, 460px);
+}
+.escena-fondo {
+  width: 100%;
+  height: auto;
+  filter: blur(4px) saturate(1.05);
+  opacity: 0.85;
+}
+.acceso-cuerpo {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.acceso-tarjeta {
+  width: 100%;
+  padding: 1.4rem 1.3rem calc(1.3rem + env(safe-area-inset-bottom));
+  border-radius: 28px 28px 0 0;
+  background: var(--superficie);
+  color: var(--tinta);
+  box-shadow: 0 -10px 30px rgb(15 42 32 / 0.1);
 }
 .login-form {
   width: 100%;
-  max-width: 380px;
-  padding: 1.6rem;
-  border-radius: 18px;
-  background: var(--superficie);
-  box-shadow: var(--sombra);
 }
 .login-form h1 {
-  font-size: 1.6rem;
-  margin: 0.9rem 0 0.6rem;
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+  margin: 0.9rem 0 0.25rem;
+}
+.login-detalle {
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 .login-icono {
   display: grid;
@@ -1470,6 +1537,120 @@ label {
   background: var(--acento);
   color: var(--sobre-acento);
 }
+.login-enviar {
+  margin-top: 0.4rem;
+  min-height: 52px;
+  border-radius: 14px;
+  font-size: 1.02rem;
+}
+.spinner-claro {
+  width: 16px;
+  height: 16px;
+  border-color: rgb(255 255 255 / 0.35);
+  border-top-color: #ffffff;
+}
+@media (min-width: 700px) {
+  .acceso-cuerpo {
+    align-items: center;
+    padding: 1.5rem 1.5rem 4rem;
+  }
+  .acceso-tarjeta {
+    max-width: 420px;
+    padding: 1.8rem;
+    border-radius: 28px;
+    box-shadow: 0 18px 50px rgb(15 42 32 / 0.16);
+  }
+}
+/* escritorio: como la portada, la escena a la derecha y la tarjeta donde estaba la hoja */
+@media (min-width: 900px) {
+  .acceso {
+    --margen-lateral: max(3rem, calc((100vw - 1280px) / 2 + 3rem));
+  }
+  .acceso-fondo {
+    align-items: center;
+    justify-content: flex-end;
+    padding: 2rem var(--margen-lateral);
+  }
+  .acceso-escena {
+    width: min(640px, 46vw);
+  }
+  .escena-fondo {
+    max-height: 78dvh;
+    filter: blur(5px) saturate(1.05);
+  }
+  .acceso-cuerpo {
+    justify-content: flex-start;
+    padding: 1.5rem var(--margen-lateral) 4rem;
+  }
+}
+
+/* ------------------------------------------------------------ transiciones entre pantallas */
+/* Con el mismo nombre en dos pantallas, el navegador transforma uno en el otro:
+   la escena de la portada pasa a ser el fondo del login, la hoja de la portada
+   se vuelve la tarjeta de login, el ícono elegido se vuelve el ícono del login
+   y la marca pasa a la barra de la app. Ver transiciones.js. */
+.portada-escena .escena,
+.acceso-escena {
+  view-transition-name: escena;
+}
+.portada-hoja,
+.acceso-tarjeta {
+  view-transition-name: hoja;
+}
+.marca,
+.barra-titulo {
+  view-transition-name: marca;
+}
+.login-icono {
+  view-transition-name: icono-app;
+}
+::view-transition-group(*) {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(root) {
+  animation: 0.25s ease both vt-salir;
+}
+::view-transition-new(root) {
+  animation: 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both vt-entrar;
+}
+/* el contenido de la hoja cambia: el viejo se va rápido y el nuevo entra cuando la forma ya se acomodó */
+::view-transition-old(hoja) {
+  animation: 0.18s ease both vt-salir;
+}
+::view-transition-new(hoja) {
+  animation: 0.3s ease 0.16s both vt-aparecer;
+}
+::view-transition-old(hoja),
+::view-transition-new(hoja) {
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+@keyframes vt-salir {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-aparecer {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vt-entrar {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 .nota {
   margin-top: 1rem;
   font-size: 0.8rem;
