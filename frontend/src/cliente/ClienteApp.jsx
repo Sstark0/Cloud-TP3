@@ -1,25 +1,102 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useSesion } from "../components/AppShell";
 import { Cargando, ErrorAviso, Estado, Leyenda, Mapa, Pasos } from "../components/comunes";
-import { Atras, Buscar, Chevron, Local, Mira, Pin, Recibo } from "../components/iconos";
+import { Atras, Buscar, Casa, Chevron, Mira, Pin, Recibo, Reloj, Salir } from "../components/iconos";
 import { config } from "../config";
 import { buscarDireccion, direccionDe } from "../geocodificacion";
 import { largo, restoDeRuta, rutaPorCalles } from "../ruteo";
+import { alClicConTransicion, conTransicion, useNavegarConTransicion } from "../transiciones";
 import { distancia, fechaHora, hora, parseFecha, precio, textoDistancia, textoMinutos, usePolling, useTick } from "../util";
+import cajaVacia from "../assets/pedido-caja.png";
+import { calle, estiloComercio, guardarEntrega, imagenProducto, nombreDe, ultimaEntrega } from "./comida";
 
 const FINALES = ["ENTREGADO", "CANCELADO", "RECHAZADO"];
 
-function Volver({ to, children }) {
+// Link que navega con transición (ver transiciones.js).
+function Ir({ to, children, ...props }) {
+  const navegar = useNavegarConTransicion();
   return (
-    <Link to={to} className="volver">
-      <Atras tam={16} /> {children}
+    <Link to={to} {...props} onClick={alClicConTransicion(navegar, to)}>
+      {children}
     </Link>
   );
 }
 
-// ---------------------------------------------------------------- comercios
+function BotonVolver({ to, etiqueta }) {
+  return (
+    <Ir to={to} className="boton-circulo" aria-label={etiqueta}>
+      <Atras tam={20} />
+    </Ir>
+  );
+}
+
+// Imagen del comercio: con el mismo nombre de transición en la tarjeta y en la
+// cabecera del comercio, al entrar la comida "viaja" de una a la otra.
+const nombreTransicion = (id) => ({ viewTransitionName: `comercio-${id}` });
+
+// ---------------------------------------------------------------- inicio
+function Cuenta() {
+  const { sesion, salir } = useSesion();
+  const [abierta, setAbierta] = useState(false);
+  const nombre = nombreDe(sesion.email);
+  return (
+    <div className="cuenta-menu">
+      <button className="saludo-avatar" onClick={() => setAbierta((a) => !a)} aria-expanded={abierta} aria-label="Tu cuenta">
+        {nombre.slice(0, 1) || "?"}
+      </button>
+      {abierta && (
+        <div className="cuenta-popover" role="menu">
+          <span className="muted chico">{sesion.email}</span>
+          <button className="btn ancho" role="menuitem" onClick={salir}>
+            <Salir tam={18} /> Salir
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Saludo() {
+  const { sesion } = useSesion();
+  const entrega = ultimaEntrega();
+  return (
+    <header className="saludo">
+      <div className="saludo-fila">
+        <span className="saludo-pin" aria-hidden="true">
+          <Pin tam={20} />
+        </span>
+        <span className="crece saludo-lugar">
+          <span className="muted chico">Entregar en</span>
+          <strong>{entrega ? calle(entrega.direccion) : "Elegís la dirección en el pedido"}</strong>
+        </span>
+        <Cuenta />
+      </div>
+      <p className="saludo-hola">Hola, {nombreDe(sesion.email)}</p>
+      <h1 className="saludo-titulo">¿Qué querés comer hoy?</h1>
+    </header>
+  );
+}
+
+function PedidoEnCurso({ pedido }) {
+  const { img, tinte } = estiloComercio(pedido.comercio);
+  return (
+    <Ir to={`pedidos/${pedido.id}`} className="en-curso" style={{ "--tinte": tinte }}>
+      <span className="en-curso-img">
+        <img src={img} alt="" />
+      </span>
+      <span className="crece">
+        <span className="muted chico bloque">Tu pedido en {pedido.comercio}</span>
+        <Estado estado={pedido.estado} />
+      </span>
+      <span className="en-curso-ir">
+        Seguir <Chevron tam={16} />
+      </span>
+    </Ir>
+  );
+}
+
 function Comercios() {
   const { app } = useSesion();
   const { datos, error, cargando, recargar } = usePolling(() => api(app, "GET", "/comercios"), 0);
@@ -27,34 +104,39 @@ function Comercios() {
   const enCurso = (activos.datos || []).filter((p) => !FINALES.includes(p.estado));
 
   return (
-    <section>
+    <section className="inicio-cliente">
+      <Saludo />
       {enCurso.map((p) => (
-        <Link key={p.id} to={`pedidos/${p.id}`} className="aviso info enlace">
-          <span>
-            Tu pedido en <b>{p.comercio}</b>: <Estado estado={p.estado} />
-          </span>
-          <Chevron tam={18} />
-        </Link>
+        <PedidoEnCurso key={p.id} pedido={p} />
       ))}
-      <h2 className="titulo-pantalla">¿Qué querés pedir?</h2>
+      <h2 className="seccion-titulo">Comercios</h2>
       <ErrorAviso error={error} onReintentar={recargar} />
       {cargando && <Cargando />}
-      <div className="lista">
-        {(datos || []).map((c) => (
-          <Link key={c.id} to={`comercios/${c.id}`} className="fila-comercio enlace">
-            <span className="avatar" aria-hidden="true">
-              {c.nombre.slice(0, 1)}
-            </span>
-            <span className="crece">
-              <strong>{c.nombre}</strong>
-              <span className="muted chico bloque">
-                {c.direccion}
-                {c.tiempo_preparacion_min != null && ` · prepara en ~${c.tiempo_preparacion_min} min`}
+      <div className="grilla-comercios">
+        {(datos || []).map((c) => {
+          const { img, tinte } = estiloComercio(c.nombre);
+          return (
+            <Ir key={c.id} to={`comercios/${c.id}`} className="tarjeta-comercio" style={{ "--tinte": tinte }}>
+              <span className="tarjeta-comercio-img">
+                <img src={img} alt="" style={nombreTransicion(c.id)} />
               </span>
-            </span>
-            <Chevron tam={18} className="muted" />
-          </Link>
-        ))}
+              <span className="tarjeta-comercio-texto">
+                <strong>{c.nombre}</strong>
+                <span className="muted chico">{calle(c.direccion)}</span>
+              </span>
+              <span className="tarjeta-comercio-pie">
+                {c.tiempo_preparacion_min != null && (
+                  <span className="chip">
+                    <Reloj tam={14} /> ~{c.tiempo_preparacion_min} min
+                  </span>
+                )}
+                <span className="boton-ir" aria-hidden="true">
+                  <Chevron tam={18} />
+                </span>
+              </span>
+            </Ir>
+          );
+        })}
       </div>
     </section>
   );
@@ -182,6 +264,82 @@ function DireccionEntrega({ comercio, valor, onCambio }) {
 }
 
 // ---------------------------------------------------------------- menú, carrito y pedido
+// Hoja que sube al tocar un plato: imagen grande, precio, cantidad y el botón
+// para sumarlo al pedido.
+function HojaProducto({ producto, comercio, cantidadActual, onConfirmar, onCerrar }) {
+  const [n, setN] = useState(cantidadActual || 1);
+  const [cerrando, setCerrando] = useState(false);
+  const caja = useRef(null);
+  const { tinte } = estiloComercio(comercio.nombre);
+
+  const cerrar = (despues) => {
+    setCerrando(true);
+    setTimeout(() => {
+      despues?.();
+      onCerrar();
+    }, 220);
+  };
+
+  useEffect(() => {
+    caja.current?.focus();
+    const tecla = (e) => e.key === "Escape" && cerrar();
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className={`hoja-modal-fondo${cerrando ? " cerrando" : ""}`} onClick={() => cerrar()}>
+      <div
+        ref={caja}
+        tabIndex={-1}
+        className="hoja-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hoja-producto-titulo"
+        style={{ "--tinte": tinte }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="hoja-asa" aria-hidden="true" />
+        <div className="hoja-modal-img">
+          <img src={imagenProducto(producto.nombre, comercio.nombre)} alt="" />
+        </div>
+        <h2 id="hoja-producto-titulo">{producto.nombre}</h2>
+        <p className="muted">
+          De {comercio.nombre}
+          {comercio.tiempo_preparacion_min != null && ` · prepara en ~${comercio.tiempo_preparacion_min} min`}
+        </p>
+        <div className="hoja-modal-fila">
+          <span className="precio-grande acento">{precio(producto.precio)}</span>
+          <div className="contador grande" aria-label="Cantidad">
+            <button className="btn redondo" onClick={() => setN((x) => Math.max(1, x - 1))} disabled={n <= 1} aria-label="Uno menos">
+              −
+            </button>
+            <span aria-live="polite">{n}</span>
+            <button className="btn redondo" onClick={() => setN((x) => x + 1)} aria-label="Uno más">
+              +
+            </button>
+          </div>
+        </div>
+        <div className="hoja-modal-pie">
+          <span className="hoja-modal-total">
+            <span className="muted chico">Total</span>
+            <span className="precio-grande">{precio(n * producto.precio)}</span>
+          </span>
+          <button className="btn primario" onClick={() => cerrar(() => onConfirmar(n))}>
+            {cantidadActual ? "Actualizar pedido" : "Agregar al pedido"}
+          </button>
+        </div>
+        {cantidadActual > 0 && (
+          <button className="btn-texto quitar" onClick={() => cerrar(() => onConfirmar(0))}>
+            Quitar del pedido
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Comercio() {
   const { app } = useSesion();
   const { id } = useParams();
@@ -194,17 +352,20 @@ function Comercio() {
   const [pedidoId] = useState(() => crypto.randomUUID());
 
   const [carrito, setCarrito] = useState({});
-  const [entrega, setEntrega] = useState(null); // { direccion, lat, lng }
+  const [entrega, setEntrega] = useState(ultimaEntrega); // { direccion, lat, lng }
+  const [abierto, setAbierto] = useState(null); // producto en la hoja
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
 
+  const lista = productos.datos || [];
   const items = Object.entries(carrito)
     .filter(([, n]) => n > 0)
     .map(([pid, n]) => [Number(pid), n]);
   const unidades = items.reduce((s, [, n]) => s + n, 0);
-  const total = items.reduce((s, [pid, n]) => s + n * Number((productos.datos || []).find((p) => p.id === pid)?.precio || 0), 0);
-  const cambiar = (pid, delta) => setCarrito((c) => ({ ...c, [pid]: Math.max(0, (c[pid] || 0) + delta) }));
+  const total = items.reduce((s, [pid, n]) => s + n * Number(lista.find((p) => p.id === pid)?.precio || 0), 0);
+  const fijar = (pid, n) => setCarrito((c) => ({ ...c, [pid]: n }));
   const listo = Boolean(entrega?.direccion && Number.isFinite(entrega?.lat));
+  const { img, tinte } = estiloComercio(comercio?.nombre);
 
   async function pedir() {
     setEnviando(true);
@@ -216,7 +377,8 @@ function Comercio() {
         items: items.map(([producto_id, cantidad]) => ({ producto_id, cantidad })),
         entrega: { direccion: entrega.direccion, lat: entrega.lat, lng: entrega.lng },
       });
-      navigate(`/cliente/pedidos/${r.pedido_id}`);
+      guardarEntrega(entrega);
+      conTransicion(() => navigate(`/cliente/pedidos/${r.pedido_id}`));
     } catch (e) {
       setError(e);
       setEnviando(false);
@@ -224,60 +386,89 @@ function Comercio() {
   }
 
   return (
-    <section className={items.length ? "con-barra-pedido" : ""}>
-      <Volver to="/cliente">Comercios</Volver>
-      <div className="cabecera-comercio">
-        <span className="avatar grande" aria-hidden="true">
-          {comercio?.nombre.slice(0, 1) || <Local tam={22} />}
-        </span>
-        <div>
-          <h2 className="titulo-pantalla">{comercio?.nombre || "…"}</h2>
-          {comercio && <p className="muted chico">{comercio.direccion}</p>}
-        </div>
+    <section className={`detalle-comercio${items.length ? " con-barra-pedido" : ""}`}>
+      <div className="hero-comercio" style={{ "--tinte": tinte }}>
+        <BotonVolver to="/cliente" etiqueta="Volver a los comercios" />
+        <img className="hero-comercio-img" src={img} alt="" style={nombreTransicion(comercioId)} />
+        <h1>{comercio?.nombre || "…"}</h1>
+        {comercio && (
+          <p className="hero-comercio-datos">
+            <span>{calle(comercio.direccion)}</span>
+            {comercio.tiempo_preparacion_min != null && (
+              <span className="chip">
+                <Reloj tam={14} /> prepara en ~{comercio.tiempo_preparacion_min} min
+              </span>
+            )}
+          </p>
+        )}
       </div>
-      <ErrorAviso error={productos.error} onReintentar={productos.recargar} />
-      {productos.cargando && <Cargando />}
 
-      <div className="menu">
-        {(productos.datos || []).map((p) => (
-          <div key={p.id} className={`fila-producto ${carrito[p.id] ? "elegido" : ""}`}>
-            <div className="crece">
-              <strong>{p.nombre}</strong>
-              <span className="monto bloque">{precio(p.precio)}</span>
+      <div className="carta">
+        <h2 className="seccion-titulo">La carta</h2>
+        <ErrorAviso error={productos.error} onReintentar={productos.recargar} />
+        {productos.cargando && <Cargando />}
+        <div className="lista-platos">
+          {lista.map((p) => (
+            <button key={p.id} className={`tarjeta-plato${carrito[p.id] ? " elegido" : ""}`} onClick={() => setAbierto(p)}>
+              <span className="tarjeta-plato-texto">
+                <strong>{p.nombre}</strong>
+                <span className="precio-grande">{precio(p.precio)}</span>
+                <span className="tarjeta-plato-accion">{carrito[p.id] ? `${carrito[p.id]} en tu pedido` : "Agregar"}</span>
+              </span>
+              <span className="tarjeta-plato-img" style={{ "--tinte": tinte }}>
+                <img src={imagenProducto(p.nombre, comercio?.nombre)} alt="" />
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {items.length > 0 && comercio && (
+          <>
+            <div className="resumen-pedido">
+              <h3>Tu pedido</h3>
+              {items.map(([pid, n]) => {
+                const p = lista.find((x) => x.id === pid);
+                return (
+                  p && (
+                    <button key={pid} className="resumen-fila" onClick={() => setAbierto(p)}>
+                      <span>
+                        <span className="monto">{n}×</span> {p.nombre}
+                      </span>
+                      <span className="monto">{precio(n * p.precio)}</span>
+                    </button>
+                  )
+                );
+              })}
             </div>
-            <div className="contador">
-              {carrito[p.id] > 0 && (
-                <>
-                  <button className="btn redondo" onClick={() => cambiar(p.id, -1)} aria-label={`Quitar ${p.nombre}`}>
-                    −
-                  </button>
-                  <span aria-live="polite">{carrito[p.id]}</span>
-                </>
-              )}
-              <button className="btn redondo primario" onClick={() => cambiar(p.id, 1)} aria-label={`Agregar ${p.nombre}`}>
-                +
-              </button>
-            </div>
-          </div>
-        ))}
+            <DireccionEntrega comercio={comercio} valor={entrega} onCambio={setEntrega} />
+            <ErrorAviso error={error} />
+          </>
+        )}
       </div>
 
       {items.length > 0 && comercio && (
-        <>
-          <DireccionEntrega comercio={comercio} valor={entrega} onCambio={setEntrega} />
-          <ErrorAviso error={error} />
-          <div className="barra-pedido">
-            <div className="barra-pedido-resumen">
-              <span className="muted chico">
-                {unidades} {unidades === 1 ? "producto" : "productos"}
-              </span>
-              <span className="monto fuerte">{precio(total)}</span>
-            </div>
-            <button className="btn primario" onClick={pedir} disabled={enviando || !listo}>
-              {enviando ? "Enviando…" : listo ? "Hacer el pedido" : "Falta la dirección"}
-            </button>
+        <div className="barra-pedido">
+          <div className="barra-pedido-resumen">
+            <span className="muted chico">
+              {unidades} {unidades === 1 ? "producto" : "productos"}
+            </span>
+            <span className="monto fuerte">{precio(total)}</span>
           </div>
-        </>
+          <button className="btn primario" onClick={pedir} disabled={enviando || !listo}>
+            {enviando ? "Enviando…" : listo ? "Hacer el pedido" : "Falta la dirección"}
+          </button>
+        </div>
+      )}
+
+      {abierto && comercio && (
+        <HojaProducto
+          key={abierto.id}
+          producto={abierto}
+          comercio={comercio}
+          cantidadActual={carrito[abierto.id] || 0}
+          onConfirmar={(n) => fijar(abierto.id, n)}
+          onCerrar={() => setAbierto(null)}
+        />
       )}
     </section>
   );
@@ -287,33 +478,78 @@ function Comercio() {
 function Pedidos() {
   const { app } = useSesion();
   const { datos, error, cargando, recargar } = usePolling(() => api(app, "GET", "/pedidos"), 10000);
+  const enCurso = (datos || []).filter((p) => !FINALES.includes(p.estado));
+  const anteriores = (datos || []).filter((p) => FINALES.includes(p.estado));
+
   return (
-    <section>
-      <h2 className="titulo-pantalla">Mis pedidos</h2>
+    <section className="mis-pedidos">
+      <h1 className="pantalla-titulo">Mis pedidos</h1>
       <ErrorAviso error={error} onReintentar={recargar} />
       {cargando && <Cargando />}
+
       {datos?.length === 0 && (
         <div className="vacio">
-          <Recibo tam={28} />
+          <img src={cajaVacia} alt="" width="96" height="96" />
           <p>Todavía no hiciste pedidos.</p>
-          <Link to="/cliente" className="btn primario">
+          <Ir to="/cliente" className="btn primario">
             Ver comercios
-          </Link>
+          </Ir>
         </div>
       )}
-      <div className="lista">
-        {(datos || []).map((p) => (
-          <Link key={p.id} to={p.id} className="fila-comercio enlace">
-            <span className="crece">
-              <strong>{p.comercio}</strong>
-              <span className="muted chico bloque">
-                {fechaHora(p.creado_en)} · {p.estado === "RECHAZADO" ? "sin cargo" : <span className="monto">{precio(p.total)}</span>}
-              </span>
-            </span>
-            <Estado estado={p.estado} />
-          </Link>
-        ))}
-      </div>
+
+      {enCurso.length > 0 && (
+        <>
+          <h2 className="seccion-titulo">En curso</h2>
+          {enCurso.map((p) => {
+            const { img, tinte } = estiloComercio(p.comercio);
+            return (
+              <Ir key={p.id} to={p.id} className="pedido-activo" style={{ "--tinte": tinte }}>
+                <span className="pedido-activo-cabecera">
+                  <span className="pedido-img">
+                    <img src={img} alt="" />
+                  </span>
+                  <span className="crece">
+                    <strong>{p.comercio}</strong>
+                    <span className="muted chico bloque">
+                      {fechaHora(p.creado_en)} · <span className="monto">{precio(p.total)}</span>
+                    </span>
+                  </span>
+                </span>
+                <Pasos estado={p.estado} />
+                <span className="pedido-activo-ir">
+                  Seguir el pedido <Chevron tam={16} />
+                </span>
+              </Ir>
+            );
+          })}
+        </>
+      )}
+
+      {anteriores.length > 0 && (
+        <>
+          <h2 className="seccion-titulo">Anteriores</h2>
+          <div className="lista-pedidos">
+            {anteriores.map((p) => {
+              const { img, tinte } = estiloComercio(p.comercio);
+              return (
+                <Ir key={p.id} to={p.id} className="fila-pedido" style={{ "--tinte": tinte }}>
+                  <span className="pedido-img chica">
+                    <img src={img} alt="" />
+                  </span>
+                  <span className="crece">
+                    <strong>{p.comercio}</strong>
+                    <span className="muted chico bloque">
+                      {fechaHora(p.creado_en)} ·{" "}
+                      {p.estado === "RECHAZADO" ? "sin cargo" : <span className="monto">{precio(p.total)}</span>}
+                    </span>
+                  </span>
+                  <Estado estado={p.estado} />
+                </Ir>
+              );
+            })}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -517,7 +753,9 @@ function Seguimiento() {
   if (pedido === null)
     return (
       <section>
-        <Volver to="/cliente/pedidos">Mis pedidos</Volver>
+        <div className="cabecera-seguimiento">
+          <BotonVolver to="/cliente/pedidos" etiqueta="Volver a mis pedidos" />
+        </div>
         <Pasos estado="RECIBIDO" />
         <div className="tarjeta centrado">
           <Cargando texto="Recibimos tu pedido. Lo estamos registrando…" />
@@ -535,8 +773,10 @@ function Seguimiento() {
 
   return (
     <section>
-      <Volver to="/cliente/pedidos">Mis pedidos</Volver>
-      <h2 className="titulo-pantalla">{pedido.comercio}</h2>
+      <div className="cabecera-seguimiento">
+        <BotonVolver to="/cliente/pedidos" etiqueta="Volver a mis pedidos" />
+        <h1>{pedido.comercio}</h1>
+      </div>
       <Pasos estado={pedido.estado} />
       <ErrorAviso error={error} />
 
@@ -610,17 +850,27 @@ function Seguimiento() {
   );
 }
 
+function NavCliente() {
+  const { pathname } = useLocation();
+  const navegar = useNavegarConTransicion();
+  // En la pantalla de un comercio la barra del pedido ocupa ese lugar.
+  if (/\/cliente\/comercios\//.test(pathname)) return null;
+  return (
+    <nav className="nav-cliente" aria-label="Secciones">
+      <NavLink to="/cliente" end onClick={alClicConTransicion(navegar, "/cliente")}>
+        <Casa tam={20} /> Inicio
+      </NavLink>
+      <NavLink to="/cliente/pedidos" onClick={alClicConTransicion(navegar, "/cliente/pedidos")}>
+        <Recibo tam={20} /> Mis pedidos
+      </NavLink>
+    </nav>
+  );
+}
+
 export default function ClienteApp() {
   return (
     <>
-      <nav className="nav-inferior" aria-label="Secciones">
-        <NavLink to="/cliente" end>
-          <Local tam={20} /> Comercios
-        </NavLink>
-        <NavLink to="/cliente/pedidos">
-          <Recibo tam={20} /> Mis pedidos
-        </NavLink>
-      </nav>
+      <NavCliente />
       <Routes>
         <Route index element={<Comercios />} />
         <Route path="comercios/:id" element={<Comercio />} />

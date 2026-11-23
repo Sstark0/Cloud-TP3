@@ -90,7 +90,7 @@ export default function App() {
       <Route
         path="/cliente/*"
         element={
-          <AppShell app="cliente" titulo="Delivery" grupo="cliente">
+          <AppShell app="cliente" titulo="Delivery" grupo="cliente" barra={false}>
             <ClienteApp />
           </AppShell>
         }

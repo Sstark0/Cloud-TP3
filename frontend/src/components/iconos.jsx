@@ -111,3 +111,18 @@ export const Buscar = (p) => (
     <path d="M16 16l4.5 4.5" />
   </Icono>
 );
+
+export const Reloj = (p) => (
+  <Icono {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Icono>
+);
+
+export const Casa = (p) => (
+  <Icono {...p}>
+    <path d="M4 11.5 12 5l8 6.5" />
+    <path d="M6 10v9h12v-9" />
+    <path d="M10 19v-5h4v5" />
+  </Icono>
+);

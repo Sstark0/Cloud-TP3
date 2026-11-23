@@ -83,7 +83,9 @@ function Login({ app, onIngreso }) {
 }
 
 // Envuelve una app: pide login, verifica el grupo de Cognito y muestra la barra superior.
-export default function AppShell({ app, titulo, grupo, children }) {
+// barra={false}: la app dibuja su propia cabecera (la del cliente saluda y
+// tiene el botón de salir en el avatar).
+export default function AppShell({ app, titulo, grupo, barra = true, children }) {
   // undefined = restaurando la sesión guardada; null = sin sesión (se muestra el login).
   const [sesion, setSesion] = useState(() => (haySesionGuardada(app) ? undefined : null));
 
@@ -138,8 +140,9 @@ export default function AppShell({ app, titulo, grupo, children }) {
   }
 
   return (
-    <SesionContext.Provider value={{ app, sesion }}>
-      <div className={`shell tema-${app}`}>
+    <SesionContext.Provider value={{ app, sesion, salir: cerrar }}>
+      <div className={`shell tema-${app}${barra ? "" : " sin-barra"}`}>
+        {barra && (
         <header className="barra">
           <Link to={`/${app}`} className="barra-titulo">
             <span className="barra-marca">{app === "cliente" ? <Bolsa tam={18} /> : <Moto tam={18} />}</span>
@@ -153,6 +156,7 @@ export default function AppShell({ app, titulo, grupo, children }) {
             </button>
           </div>
         </header>
+        )}
         <div className="contenido">{children}</div>
       </div>
     </SesionContext.Provider>
