@@ -51,7 +51,7 @@ Justification of every component: **role**, **configuration and why**, **alterna
 | | | On-demand capacity | ~3× the price of 1 shard at this volume **[LAB: L4]**; allowed in the Lab (verified 2026-11-18) |
 | Lambda `escalar-capacidad` + EventBridge Scheduler + alarm | Scheduled (lunch/dinner) and reactive (throttled writes) stream scaling | Lambda provisioned concurrency / Application Auto Scaling | Explicit deny / service-linked role cannot be created **[LAB: L1]** (verified 2026-11-18) |
 | | | Scaling RDS on a schedule | Instance class change = downtime; RDS is not the ingest bottleneck |
-| | | Data Firehose to S3 | Not blocked by L1: `firehose.amazonaws.com` can assume LabRole (verified 2026-11-18) — **WEAKPOINT** |
+| | | Data Firehose to S3 | Not blocked by L1: `firehose.amazonaws.com` can assume LabRole (verified 2026-11-18). Bills each ~150 B position as 5 KB (~35×): ~36 USD/month at 100 records/s vs cents for the Lambda — **WEAKPOINT** |
 | Amazon S3 (`comprobantes`, `historico`) | Delivery proof photos / position and order-event history | One bucket with prefixes (previous design) | Lifecycle, CORS and endpoint policy had to be scoped by prefix; mixed operational and analytical data |
 | | | Upload through API Gateway/Lambda | Payload limits, pays Lambda time for bytes |
 | | | Presigned PUT | Cannot enforce max size |
@@ -319,7 +319,13 @@ Justification of every component: **role**, **configuration and why**, **alterna
 - **SQS**: a message is consumed by one consumer only (two queues + SNS fan-out would be needed), no replay, and ordering per driver only with FIFO.
 - **Writing every ping directly to RDS**: one transaction per ping on a `db.t3.micro`; Kinesis absorbs bursts and lets the consumer collapse them.
 - **On-demand capacity**: per-stream hourly charge (~0.04 USD/h) plus per-GB, ~3× one shard at this volume. **[LAB: L4]**
-- **Data Firehose** for the S3 archive (instead of `archivar-posiciones`): buffering and delivery without code. Requires a delivery role; LabRole can be assumed by `firehose.amazonaws.com` and `firehose:CreateDeliveryStream` is allowed (verified 2026-11-18), so the Lab does not block it. **WEAKPOINT**: Firehose is the better tool here; switching to it is recommended, or the defense must argue the custom batching/keys of `archivar-posiciones`.
+- **Data Firehose** for the S3 archive (instead of `archivar-posiciones`): buffering and delivery without code, plus built-in compression and Parquet conversion. Requires a delivery role; LabRole can be assumed by `firehose.amazonaws.com` and `firehose:CreateDeliveryStream` is allowed (verified 2026-11-18), so the Lab does not block it. **WEAKPOINT**: it is the managed tool for this job. Answer: **cost, because of record size**.
+  - Firehose bills ingestion per record rounded up to **5 KB**, also when the source is a Kinesis Data Stream. The rounding is per record, not per batch or per S3 object (AWS pricing page and FAQ, checked 2026-11-24).
+  - A position is one stream record of **~140–155 B** (UUID `sub` + `lat`/`lng` + ISO `ts`), so Firehose would bill **~35×** the real volume.
+  - Example: 500 drivers × 1 ping / 5 s = 100 records/s ≈ 259 M records/month. That is ~38 GB of real data but ~1.2 TB billed, ≈ **36 USD/month** at 0.029 USD/GB, before Parquet conversion. That is over 3× the shard itself (~11 USD/month).
+  - `archivar-posiciones` costs cents: one short invocation per shard per minute (~43 k/month) and the same number of S3 PUTs (~0.2 USD).
+  - Its object key `<shard>-<first sequenceNumber>` is also idempotent: a retried batch overwrites the same object, while Firehose is at-least-once with random object names (duplicates on retry).
+  - Firehose would pay off only if each stream record carried several positions (the app batching ~30 pings per call), which would add latency to `actualizar-posicion`, or for larger records.
 - **Enhanced fan-out**: dedicated 2 MB/s per consumer at extra cost; 2 consumers fit in the shared 2 MB/s read throughput.
 
 ### Stream scaling (`escalar-capacidad`)
