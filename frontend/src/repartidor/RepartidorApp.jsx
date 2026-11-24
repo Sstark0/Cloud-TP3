@@ -368,10 +368,8 @@ export default function RepartidorApp() {
   async function responder(oferta, acepta) {
     await api(app, "POST", `/asignaciones/${oferta.pedido_id}/respuesta`, { aceptar: acepta, task_token: oferta.task_token });
     setRespondidas((s) => new Set(s).add(oferta.task_token));
-    if (acepta) {
-      fases.current[oferta.pedido_id] = "retiro";
-      setAviso("Pedido aceptado. Andá a retirarlo.");
-    }
+    // Sin aviso al aceptar: la tarjeta del pedido en curso ya dice qué hacer.
+    if (acepta) fases.current[oferta.pedido_id] = "retiro";
     pedidos.recargar();
   }
 
