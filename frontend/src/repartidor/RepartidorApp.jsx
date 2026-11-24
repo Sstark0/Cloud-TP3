@@ -3,6 +3,7 @@ import { api, ApiError, subirAS3 } from "../api";
 import { useSesion } from "../components/AppShell";
 import Cuenta from "../components/Cuenta";
 import IlustracionEstado from "../components/IlustracionEstado";
+import Toast from "../components/Toast";
 import { Cargando, ErrorAviso, Estado, Leyenda, Mapa } from "../components/comunes";
 import { Camara, Moto, Reloj } from "../components/iconos";
 import { estiloComercio, nombreDe } from "../cliente/comida";
@@ -301,7 +302,7 @@ export default function RepartidorApp() {
   const [errorEnvio, setErrorEnvio] = useState(null);
   const [respondidas, setRespondidas] = useState(() => new Set());
   const [confirmando, setConfirmando] = useState(() => new Map()); // pedido_id -> inicio de la confirmación
-  const [aviso, setAviso] = useState(null);
+  const [aviso, setAviso] = useState(null); // { id, titulo, detalle, tipo } para el aviso flotante
   const fases = useRef({}); // pedido_id -> "retiro" | "entrega" (solo para la simulación)
   // tramo -> { puntos, i } con la ruta por calles, "pidiendo", o { recta, reintentar } si OSRM no respondió
   const trayectos = useRef({});
@@ -341,11 +342,11 @@ export default function RepartidorApp() {
     if (!quitar.size) return;
     setConfirmando((m) => new Map([...m].filter(([id]) => !quitar.has(id))));
     if (terminados.length) {
-      setAviso("¡Entrega confirmada! Volviste a quedar disponible.");
+      setAviso({ id: Date.now(), titulo: "¡Entrega confirmada!", detalle: "Volviste a quedar disponible." });
       setEstado("DISPONIBLE");
       localStorage.setItem(claveEstado, "DISPONIBLE");
     } else {
-      setAviso("No se pudo confirmar la entrega. Sacá la foto de nuevo.");
+      setAviso({ id: Date.now(), tipo: "error", titulo: "No se pudo confirmar la entrega", detalle: "Sacá la foto de nuevo." });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidos.datos]);
@@ -363,6 +364,7 @@ export default function RepartidorApp() {
     await api(app, "PUT", "/repartidores/me/estado", { disponible: nuevo === "DISPONIBLE" });
     setEstado(nuevo);
     localStorage.setItem(claveEstado, nuevo);
+    setAviso(null);
   }
 
   async function responder(oferta, acepta) {
@@ -483,11 +485,7 @@ export default function RepartidorApp() {
   return (
     <section className="grilla-repartidor">
       <Cabecera estado={estado} ocupado={ocupado} onCambiar={cambiarEstado} />
-      {aviso && (
-        <div className="aviso ok" onClick={() => setAviso(null)}>
-          {aviso}
-        </div>
-      )}
+      <Toast aviso={aviso} onCerrar={() => setAviso(null)} duracion={aviso?.tipo === "error" ? 8000 : 4500} />
       <ErrorAviso error={pedidos.error} />
 
       <div className="columna">
